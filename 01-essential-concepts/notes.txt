@@ -1,0 +1,300 @@
+Linux:
+Linux is a modern Unix-like system, but it is not Unix. Although Linux shares
+much of the Unix philosophy, it diverges where desired, offering some additional
+and differently behaving system calls.
+
+System programming:
+System programming is the practice of writing system software, software which
+in large part directly leverages system calls provided by the kernel and core
+system libraries. Examples include shells, text editors, compilers, core
+utilities, system daemons, network and database servers.
+
+System vs application:
+System software interacts primarily with the kernel and system libraries, while
+application software uses higher level libraries to abstract away lower level
+details. Abstraction provides portability, ease of use and simplicity, however
+often at the cost of control and performance. Both forms of programming have
+their respective roles.
+
+Recent trend:
+The last decade and a half has witnessed a trend towards programming at a higher
+level of abstraction as opposed to at the system level. This is driven by the
+increasing reliability of system software and business needs in the internet
+age. That being said, there will long be a need for competent system developers
+to build the foundation on which other software is developed, and the awareness
+that low level programming teaches is generally useful for all software
+engineers.
+
+Focus:
+The umbrella of system programming often includes kernel development, for
+example device driver writing. However, this book is not concerned with kernel
+development, but rather with system software which lives in user space.
+
+System calls:
+Function invocations from user space requesting some service or resource from
+the kernel. For security, it is not possible for user space code to directly
+execute/link kernel code or manipulate kernel data. Instead, user space code
+causes a software interrupt (often a special machine instruction), telling the
+kernel which call to execute and with what parameters via machine registers. The
+processor then executes the appropriate interrupt handler (the system call) in
+kernel mode. See https://en.wikipedia.org/wiki/Interrupt for details.
+
+Fun fact:
+The term "trap" is often used to describe system calls because some
+older machine architectures had an assembly instruction called TRAP which
+causes the processor to execute a (kernel) routine in a privileged mode.
+Note there are some differences between traps and interrupts as per
+https://www.quora.com/Why-are-System-calls-also-called-traps.
+
+The C library:
+The C library, libc or glibc on unix systems implements the standard C library
+as well as wrappers for system calls.
+
+The C compiler:
+GNU compiler collection (formerly the GNU C compiler), is a family of compilers
+as well as the name of the c compiler's binary.
+
+C++:
+C++ is a fine language for system programming tasks, but C has historically been
+the language of choice on linux systems.
+
+API (source compatibility):
+An API defines the interface by which on piece of software communicates with
+another at the source level. For example, the standard C library provides a
+family of essential functions for things like memory management and string
+manipulation.
+
+ABI (binary compatibility):
+An ABI defines the binary interface between two pieces of software on a
+particular architecture. It defines how an application interacts with itself,
+with libraries and with the kernel and ensures that a given piece of object code
+will function on any system with the same ABI without recompilation. ABI is
+concerned with calling conventions (how functions are invoked, parameters passed
+via registers and return values retrieved), byte ordering, register use, system
+call invocation, linking, library behavior and and binary object format.
+*** ABI's are dependent on the operating system and architecture. *** They are
+implemented by the kernel and the toolchain (compiler, assembler, linker).
+
+Linux concepts:
+All Unix systems, including Linux, provide a common set of abstractions and
+interfaces. In fact, these define Unix. Abstractions such as the file and the
+process, interfaces to mange pipes and sockets, are at the core of Unix.
+
+1.1) Files and the filesystem
+The file is the most fundamental abstraction in Unix. Following the everything-
+is-a-file philosophy, much interaction with the operating system consists of
+reading and writing to a file, even if the object in question is not a physical
+file on disk. A file must be opened before it is accessed, files can be opened
+for reading, writing or both. An open file is represented by a file descriptor,
+an integer mapping to the file itself.
+
+1.2) Regular files
+A regular file contains bytes of data organized linearly. One piece of metadata
+maintained by the kernel for an open file is an integer called the file
+position. Any of the bytes within the file may be read from or written to, from
+the byte indicated by the current file position. The position starts at zero
+when the file is open, and increases as data is read/written. It may also be set
+manually, even beyond the end of the file, writing to which causes the extra
+space to be zeroed. Writing to a byte in the middle of the file overwrites its
+content.
+
+The size of a file is measured in bytes. A file's size can be "truncated" to be
+smaller or even larger, confusingly. It may also be zero.
+
+A single file may be opened more than once simultaneously, even by different
+processes, and each instance of the open file has a unique file descriptor.
+Therefore, user space programs must synchronize any concurrent file access.
+
+Files are often referenced via names, but they are not directly associated with
+them. Inodes are objects (on disk and loaded into memory by the kernel) which
+contain important metadata about a file, such as its modification timestamp,
+owner, type, size, location on disk and a filesystem-unique number.
+
+Since accessing a file by its inode number is cumbersome, we refer to them using
+names from user space. Directories provide the mapping between names and file
+inodes (name and inode pair is called a link). Directories exist on disk and are
+used by the kernel to perform name to inode resolution.
+
+Such resolution involves the kernel opening the directory containing the file
+to get its inode, and from its inode getting the file's position on disk.
+Directories have their own inodes and can point to other directories, allowing
+a hierarchy of directories to be built, from the root /. Note that absolute
+paths are resolved from the root, while relative paths start from the current
+directory. Directories cannot be written to directly by user space, as this
+could easily corrupt the filesystem. Instead a set of system calls allows for
+updating links.
+
+1.3) Hard and symbolic links
+When multiple names are mapped to the same inode, we call them hard links. An
+inode maintains a link count of the hard links. Deleting a file involves
+unlinking it from its directory (removing its link), only once its link count
+has gone to zero.
+
+To allow links to span multiple filesystems (inode numbers are only unique per
+file system) Unix implements symbolic links. These are essentially inodes with
+data blocks which store the pathname to another file. Therefore resolving a
+symbolic effectively link resolves opening two files.
+
+1.4) Special files: character device, block device, named pipe, unix socket
+A special file is a kernel object represented as a file. Linux supports block
+device files, character device files, named pipes and Unix domain sockets.
+
+Device access in Linux is performed via device files, which act and look like
+normal files residing on the filesystem. They may be opened/read/written,
+allowing user space processes to interact with devices (physical and virtual).
+
+A character device is accessed as a linear queue of bytes. The device driver
+places bytes on the queue and the user space program reads them in that order.
+When there are no more bytes to be consumed, the device returns an end of file
+EOF. Examples include the keyboard and sound cards.
+
+A block device provides random access to an array of bytes, mapped onto the
+device. Usually, these are storage devices like hard disks.
+
+Named pipes (FIFO's) are a one-way interprocess communication (IPC) mechanism
+using a file descriptor accessed through a special file in the filesystem. Note
+this is in contrast to regular pipes, which are created in memory by the kernel
+to pipe output of one program to the input of another.
+
+Unix domain sockets provide IPC analogously to network sockets, except their
+descriptor is obtained through a special file called a socket file.
+
+Linux, like all Unix systems, provides a global and unified namespace for files
+and directories. A filesystem is a valid hierarchy of directories (internal
+nodes) and files (leaf nodes). Note that filesystem also refers to the format
+of data in a disk partition. Filesystems may be mounted and unmounted from the
+existing hierarchy, making their roots accessible at their mount points.
+
+The smallest addressable amount of data from the disk is a sector, from the
+filesystem a block (power of two multiple of the sector) and from the memory
+management unit a page (larger than a block).
+
+2.1) Processes
+Processes are another critical abstraction in Unix systems. Processes are object
+code in execution, active running programs. They also consist of data,
+resources, state and a virtualized computer. Processes begin life as executable
+object code, which is machine-runnable code that the kernel understands. The
+most common format on Linux is executable and linkable format (ELF). The format
+contains metadata and multiple sections of code and data (text, data, bss).
+
+2.2) Process resources
+A process is associated with various system resources, which are arbitrated by
+the kernel. It may request and manipulate these via system calls. Resources
+include timers, pending signals, open files, network connections, hardware and
+IPC mechanisms. A process' resources along with statistics are stored in the
+kernel with the process' process descriptor.
+
+2.3) Virtualized views
+A process is a virtualization abstraction. The Linux kernel, through pre-emptive
+multitasking and virtual memory, provides every process with a virtualized view
+of the processor and memory.
+
+(1) The kernel transparently schedules and pre-empts processes, sharing the
+    system's processors among them.
+
+(2) Each process has its own linear address space the size of the system main
+    memory. Through virtual memory and paging, the kernel maps the process'
+    virtual address space to physical RAM or SWAP. This is achieved with the aid
+    of hardware support in modern CPU's like the memory management unit (MMU).
+
+Therefore although processes may be scheduled alongside each other, they each
+run as if they were in control of processing and memory.
+
+2.3) Threads
+A thread is the abstraction responsible for executing code and maintaining the
+process' running state. Each process may have one or more threads of execution.
+
+Note: historically, many Unix programs are single threaded, owing to Unix's fast
+process creation times and robust IPC mechanisms.
+
+A thread has a stack (for local variables), processor state, and a current
+location to in the object code (for the instruction register IR). Other process
+resources, like the virtual address space, are shared by threads in the same
+process. Thus threads share the memory abstraction while maintaining their own
+processor abstraction.
+
+Note: internally, the Linux kernel represents threads as normal processes that
+happen to share some resources. In user space, pthreads (POSIX standard) are
+used to manipulate threads.
+
+2.4) Process hierarchy
+Each process has an integer process id. In Linux, processes form a hierarchy
+called the process tree. The root is the init process. New processes are created
+using the fork() system call, which creates a duplicate of the calling process.
+Every process but init has a parent, and children who lose their parents are
+re-parented to init.
+
+See https://en.wikipedia.org/wiki/Zombie_process for zombie process details.
+
+Users and Groups:
+Users and groups are concepts which provide authorization. Each user has a user
+id and each process is associated with the id of the user running it, called the
+real uid.
+
+There is no other representation of users in the kernel besides user
+id's and names are mapped to id's in /etc/passwd for use by user programs.
+
+During login, users supply name and password to the login program, which then
+spawns the user's login shell (also specified in /etc/passwd) and makes the
+shell's user id equal to that of the user. Children inherit the user id's of
+their parent.
+
+User id 0 is associated with the root user, which has special privileges, e.g.
+changing a process' uid.
+
+In addition to real uid, a process has an effective uid (run with rights of
+other users), a saved uid (original real uid) and a filesystem uid
+(filesystem access).
+
+Each users belongs to one or more groups, including a primary group
+(in /etc/passwd), therefore processes also have various group id's. One use of
+groups is to share file permissions with multiple users.
+
+Permissions:
+Each file/directory has an owning user, group and three sets of permission bits.
+The bits decide wither the owner, group or other may read, write or execute the
+file/directory. This data is stored in the inode.
+
+Signals:
+Signals are a mechanism for one-way asynchronous notifications. One may be sent
+from the kernel to a process, between processes, or from a process to itself.
+They alert the process to some event, like a segmentation fault.
+
+Signals interrupt a running process, causing it to stop what it's doing a
+perform a handler. With the exception of SIGKILL/SIGSTOP (which forcibly
+terminates/stops a process) processes may choose what to do.
+
+IPC:
+Pipes, named pipes, semaphores, message queues, shared memory and futexes.
+
+Headers:
+The kernel and the C library provide headers implementing the C and  POSIX
+standards, e.g. <string.h> and <unistd.h>.
+
+Error Handling:
+In C system programming, an error is indicated via a function's return value
+(usually -1) and described by a message mapping to the value of global variable
+errno.
+
+Note: it is legal for errno to be modified during the successful execution of
+a function, so it only has meaning immediately after an erroneous function call.
+
+To translate errno to a human readable message, the C library provides:
+
+#include <stdio.h>
+void perror(const char* str); // prints to stderr, prefixed by str
+
+#include <string.h>
+char* strerror(int errnum); // not thread safe
+
+#include <string.h>
+int strerror_r(int errnum, char* buf, int len); // thread safe
+
+Note: each threads gets its own errno variable, so the variable itself is safe
+
+Some descriptions for common errno values are:
+EACCESS - Permission denied
+EAGAIN - Try again
+EBADF - Bad file number
+EEXIST - File already exists
+etc.

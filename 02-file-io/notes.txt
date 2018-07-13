@@ -1,0 +1,669 @@
+Files in Unix:
+This chapter covers basic system calls for interacting with files. Because much
+of a Unix system is modeled as files (device files, named pipes, unix sockets,
+directories), file IO is at the crux of Linux system programming. Later topics
+will include IO using the standard C library, advanced file IO and directories.
+
+File descriptors:
+Before a file can be read or written to, it must be opened. Instances of an open
+file are referred to by non-negative integers called file descriptors (fd). The
+fd is used with system calls to identify the file to interact with.
+
+File table:
+The kernel maintains a per-process data structure called the file table which
+stores information about open files. It is indexed by fd's and stores at each
+index the in memory representation of the open file's inode and other metadata,
+like file position and access modes. Each process has a limited number of file
+descriptors.
+
+Errors:
+Because they cannot be negative, -1 is used to indicate errors by system calls
+which would have returned a valid file descriptor.
+
+Standard descriptors:
+Each process has fd's 0 (stdin), 1 (stdout) and 2 (stderr). Usually, stdin is
+connected with the user's keyboard, stdout and stderr with the screen. Users can
+redirect and pipe these fd's.
+
+Inheriting and sharing descriptors:
+Children inherit their parents process table, but generally a change in a
+process' file table does not affect the other's. Fd's can also be shared
+between processes.
+
+Opening:
+Files are opened using the open() system call, which returns a fd.
+
+/*
+* <sys/types.h> - various types, e.g. size_t, ssize_t, pid_t, pthread_t, mode_t
+* note that size_t is also defined in <stddef.h>, <stdlib.h>, <stdio.h>
+* <sys/stat.h> - stat(), permission bit constants (S_IRWXU, S_IRWXG, S_IRWXO)
+* <fcntl.h> - open(), file open options (O_WRONLY, O_CREAT, O_TRUNC, O_NONBLOCK)
+*/
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+/*
+* opens file with the specified name and returns a fd
+* file position starts at zero
+* flags determine read, write or read/write access
+*
+* flags is determined by a bitwise OR
+* it must contain an access mode O_RDONLY, O_WRONLY, O_RDWR
+* the process needs sufficient permissions to use the flags
+*
+* additional flags modify the opened file's behavior
+* O_APPEND - writes begin at the end of the file
+* O_CREAT - create file if it doesn't exist (normally fails if name dne)
+* O_DIRECTORY - fails if name is not a directory (internally by openddir())
+* O_EXCL - with O_CREAT, fails if the name already exists
+* O_NONBLOCK - no operation blocks, used for FIFO's and sockets
+* O_SYNC - synchronous writes (reads are by default)
+* O_TRUNC - truncates regular file to zero length if it already exists
+*/
+int open(const char* name, int flags);
+
+/*
+* mode is required when O_CREAT is given, specifies the permissions
+*/
+int open(const char* name, int flags, mode_t mode);
+
+Owners of new files:
+The uid of the file's owner is the effective uid of the process creating the
+file. Similarly determined is the gid.
+
+Permissions of new files:
+Mode specifies permissions when used with O_CREAT. Some constants can be binary
+AND'd together to form the mode.
+
+S_IRWXU - owner rwx
+S_IRUSR - owner r
+S_IRWXG - group rwx
+S_IRGRP - group r
+S_IRWXO - other rwx
+S_IROTH - other r
+etc.
+
+Alternatively, a numeric literal like 0664 can be used. This is in  theory less
+portable because POSIX compliance does not require a specific bit order for file
+permissions, although no Unix variants do it differently.
+
+// opens file for writing, creating if it dne and truncating if it does
+int fd = open("/some/path", O_WRONLY | O_CREAT | O_TRUNC, 0664)
+
+Note that the complement of the umask (see umask(), umask) is binary AND'd with
+the mode to turn off any bits that are not allowed by the user'su mask.
+
+Creating files:
+Since, the combination of O_WRONLY | O_CREAT | O_TRUNC is so common, a system
+call exists just for that behaviour. It is historic relic from the days when
+open() only had two arguments in Unix.
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+int creat(const char* name, mode_t mode);
+
+Reading:
+
+#include <unistd.h>
+
+/*
+* reads len bytes into the memory starting at the address pointed to by buf
+* blocks until data is available or EOF, there is also non-block mode
+* file position is updated
+*/
+ssize_t read(int fd, void* buf, size_t len);
+
+Incomplete reads:
+It is possible for read() to return a positive non-zero integer less than len.
+This happens when less than len data is available, a signal interrupts the
+system call, etc.
+
+0 indicates end of file (EOF). This simply means that the file position was
+advanced off the last valid byte of the file, so there is nothing left to read.
+
+A summary of the possibilities is below.
+1) read() returns len, meaning all requested bytes were read into buf
+2) read() returns a value > 0 and < len, meaning less than len bytes were
+   available, a signal interrupted the call, an error occured during the call,
+   EOF was reached before len bytes were read. Re-issuing the read with updated
+   buf and len will reveal the cause of the problem
+3) read() returns 0, there is no data left to read
+4) read() returns -1 and errno is EINTR (signal)
+5) read() returns -1 and errno is EAGAIN (in non-block mode, no data was ready)
+
+Reading all bytes:
+ssize_t ret;
+
+while(len > 0 && (ret = read(fd, buf, len)) != 0)
+{
+  if(ret == -1)
+  {
+    if(errno == EINTR)
+      continue;
+    perror("read");
+    break;
+  }
+
+  len -= ret;
+  buf += ret;
+}
+
+Non-blocking reads:
+When reading without blocking, the program can do other useful work while data
+is not yet available. EAGAIN should be checked when -1 is returned.
+
+char buf[BUF_SIZE];
+ssize_t nr;
+
+nr = read(fd, buf, BUF_SIZE);
+
+if(nr == -1)
+{
+  if(errno == EINTR)
+    // try again
+
+  if(errno == EAGAIN)
+    // try later
+
+  else:
+    // error
+}
+
+Read errors:
+EAGAIN - in non-block option, try again later
+EINTR - signal interrupted call
+EBADF - invalid file descriptor (dne or not opened for reading)
+EINVAL - file descriptor does not support reading
+EIO - low level IO error
+
+Writing:
+
+#include <unistd.h>
+
+/*
+* writes up to count bytes starting at buf to the file's current position
+* on success, the number of bytes written is returned and the file position is
+* updated
+*/
+ssize_t write(int fd, const void* buf, size_t count);
+
+Partial writes:
+write() always completes for regular file. However, sockets may only partially
+write. Note that there is no EOF condition.
+
+ssize_t ret;
+
+while(len > 0 && (ret = write(fd, buf, len)) != 0)
+{
+  if(ret == -1)
+  {
+    if(errno == EINTR)
+      continue;
+    perror("write");
+    break;
+  }
+
+  len -= ret;
+  buf += ret;
+}
+
+Append mode:
+When a file is opened with O_APPEND, all writes occur at the end of the file,
+even when multiple processes are writing simultaneously. This is useful for log
+files.
+
+Errors:
+EFBIG - the write has made the file too large (implementation dependent)
+ENOSPC - the filesystem backing the given file descriptor does not have space
+
+Buffering:
+When write() returns, the kernel has copied bytes from the supplied buffer into
+a kernel buffer, but there's no guarantee that the bytes were written to the
+underlying destination. The performance difference between processors and hard
+disks would make such waits too long.
+
+Dirty Buffers:
+Later, in the background, the kernel gathers up all the dirty (unwritten)
+buffers and flushes them onto disk (write-back). This allows write calls to occur
+relatively fast, since disk access is deferred by the kernel until more idle
+periods, where multiple writes are batched together. Note that reads are
+satisfied from the kernel buffer if the disk is stale.
+
+Note: the kernel may re-order write requests as it sees fit. A rare case of
+applications which care about write-ordering is in databases, who want to ensure
+that they are never in an inconsistent state.
+
+Maximum age:
+IO errors which occur before write-back cannot be reported to the process which
+initiated the write, since dirty buffer in the kernel are not associated with
+any processes. To limit the amount of time by which a write is deferred, there
+is a maximum dirty buffer age, before which a file's dirty buffer must be
+flushed.
+
+Synchronized IO:
+Buffering writes provides a significant improvement in performance compared to
+synchronized IO with slow disk drives. However, there are times when an
+application wants to control exactly when data hits the disk. Note that these
+functions return when the hard disk says it has received the data, but disks
+which have write caches may not have committed the data to disk quite yet.
+
+#include <unistd.h>
+
+/*
+* flushes dirty data associated with fd, which must be opened for writing
+* also flushes metadata like creation timestamp and other inode information
+* note that fysnc() must also be called on the file's directory to update links
+*/
+int fsync(int fd);
+
+/*
+* only flushes dirty data and metadata required for future writes (size is
+* essential for writes to work, but not modification timestamp)
+* not waiting for all metadata improves performance compared to fsync()
+*/
+int fdatasync(int fd);
+
+/*
+* all dirty buffers are flushed to disk
+* Note that in C, void parameter list means no parameters, while empty means any
+* number of parameters!
+*/
+int sync(void);
+
+Note: O_SYNC flag in open() causes all wrtes to the fd to be synchronized
+
+Direct IO:
+Like any modern operating system kernel, Linux implements a complex layer of
+caching, buffering and IO management between applications and devices. Some high
+performance applications may choose to bypass this layer of complexity and
+implement their own IO system. Usually, this is not worth the effort and likely
+to be inferior than the mechanisms provided by the kernel, but databases may
+choose to implement their own caching.
+
+O_DIRECT:
+Providing this flag to open() instructs the kernel to minimize the presence of
+IO management. Operations will initiate directly from user space and block until
+the hard disks signals it has received the data.
+
+Direct IO alignment:
+Request length, buffer alignment and file offset must be multiples of the
+underlying device driver's sector size, usually 512 bytes. Older Linux kernels
+required multiples of the larger filesystem logical block size.
+
+Closing:
+After a program has finished working with a file, it can un-map the fd from the
+file close().
+
+#include <unistd.h>
+
+int close(int fd);
+
+Side effects:
+When the last file descriptor for a file is closed, the data structure for
+the file inside the kernel is freed, i.e. the in-memory copy of the inode if
+often freed at this time. If a file was unlinked while while open, it is not
+physically removed until it is closed and its in-memory inode is freed.
+
+Note: closing a fd has no bearing on when a file is flushed to disk, use fsync
+for that.
+
+Errors:
+EBADF, EIO
+
+Seeking:
+Normal IO occurs linearly, with updates to the file position caused by reads and
+writes. Some applications, however, may want to provide random access. Updating
+a fd's file position can be done using lseek().
+
+#include <sys/types.h> // off_t is a signed integer
+#include <unistd.h>
+
+off_t lseek(int fd, off_t pos, int origin);
+
+The behavior of lseek() depends on the origin integer, which may be:
+SEEK_CUR - position set to its current position + pos
+SEEK_END - position set to the length of the file + pos
+SEEK_SET - position set to pos
+
+Positional reads and writes:
+pread() and pwrite() operator beginning at position pos and do not modify the
+file's current position after they complete.
+
+#include <unistd.h>
+
+ssize_t pread(int fd, void* buf, size_t count, off_t pos);
+ssize_t pwrite(int fd, void* buf, size_t count, off_t pos);
+
+
+Truncating:
+File lengths can be decreased or increased. These calls do not modify the file
+position.
+
+#include <unistd.h>
+#include <sys/types.h>
+
+/*
+* by file descriptor
+*/
+int ftruncate(int fd, off_t len);
+
+/*
+* by path name
+*/
+int truncate(const char* path, off_t len);
+
+Multiplexed IO:
+Applications often need to block on more than one file descriptor, juggling IO
+between stdin, IPC, and files. For example, modern event driven GUI's may content with
+hundreds of pending events in their main loops and network applications may need
+to handle a large number of open sockets at the same time.
+
+Although threads may be used to allow a process to block on multiple fd's
+concurrently, using a thread per fd may consume too many resources. And a single
+thread may still block on read(), missing data available on other descriptors.
+
+Although non-blocking IO returns immediately if data is not available, we would
+also like the thread of execution to sleep until it is awoken, reducing
+unnecessary processor load.
+
+Multiplexed IO allows a program to block on multiple fd's and receive
+notifications when any of them become ready to read or write without blocking.
+
+a) tell me when any of these fd's are ready for IO
+b) if nothing is ready, sleep until one or more are
+c) woken up, determine which fd's are ready
+d) handle fd's which are ready
+e) go back to first step
+
+1) select()
+Synchronous multiplexed IO. Blocks until fd's are ready or timeout.
+
+#include <sys/select.h>
+
+/*
+* n is the value of the largest descriptor + 1
+* this must be determined by the caller
+* timeout is a pointer to a timeval struct
+* struct timeval
+* {
+*   long tv_sec; // seconds
+*   long tv_usec; // micro-seconds
+* }
+*/
+int select(int n,
+           fd_set *readfds,
+           fd_set *writefds,
+           fd_set *exceptfds
+           struct timeval *timeout);
+
+FD_CLR(int fd, fd_set *set);
+FD_ISSET(int fd, fd_set *set);
+FD_SET(int fd, fd_set *set);
+FD_ZERO(fd_set *set);
+
+Watched descriptors:
+The watched fd's are broken into a read, write and except set. The except set
+is watched for exceptions or out of band data (socket only). A NULL (nullptr)
+argument simply means that set will not be watched.
+
+Return:
+On return, the sets will only contain ready fd's.
+
+Helper macros:
+The sets of fd's are not manipulated directly, but rather through helper macros.
+
+FD_ZERO - removes all fd's from a set (used before each call to select())
+FD_SET - adds a fd to a set
+FD_CLR - removes a fd from a set (rarely used)
+FD_ISSET - checks if a fd is part of a set (0 if false, !=0 otherwise)
+
+
+Return value and errors:
+On success, select() returns the number of fd's ready for IO among all three
+sets. On errno, -1 is returned and errno is set.
+
+EBADF - bad fd
+EINTR - wait interrupted by signal
+EINVAL - invalid n (<= 0) or timeout
+ENOMEM - insufficient memory
+
+Example:
+This trivial program blocks on stdin for up to five seconds. It illustrates the
+usage of this system call, despite not multiplexing IO.
+
+#include <stdio.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <stdio.h>
+
+#define TIMEOUT 5
+#define BUF_LEN 1024
+
+int main(void) // C-style
+{
+  struct timeval tv;
+  fd_set readfds;
+  int ret;
+
+  // wait on stdin for input
+  FD_ZERO(&readfs);
+  FD_SET(STDIN_FILENO, &readfds);
+
+  // wait up to five seconds
+  tv.tv_sec = TIMEOUT;
+  tv.tv_usec = 0;
+
+  // block
+  ret = select(STD_FILENO + 1, &readfds, NULL, NULL, &tv);
+
+  if(ret == -1)
+  {
+    perror("select");
+    return 1;
+  }
+  else if (ret == 0)
+  {
+    printf("%d seconds elapsed.\n", TIMEOUT);
+    return 0;
+  }
+
+  // check ready fd's
+  if(FD_ISSET(STDIN_FILENO, &readfds))
+  {
+    char buf[BUF_LEN + 1];
+    int len = read(STDIN_FILENO, buf, BUF_LEN);
+
+    if(len == -1)
+    {
+      perror("read");
+      return 1;
+    }
+
+    if(len > 0)
+    {
+      buf[len] = '\0';
+      printf("read: %s\n", buf);
+    }
+
+    return 0;
+  }
+
+  fprintf(stderr, "This should not happen!");
+  return 1;
+}
+
+Portable sleeping using select():
+struct timeval tv;
+tv.tv_sec = 0;
+tv.tv_usec = 500;
+select(0, NULL, NULL, NULL, &tv);
+
+See also:
+pselect() // POSIX, whereas select() was introduced in BSD
+
+2) poll()
+A newer system call which aims to solve certain deficiencies with select().
+
+Note: poll() comes from System V, one of the first commercial versions of Unix.
+See https://en.wikipedia.org/wiki/Unix-like#/media/File:Unix_timeline.en.svg.
+
+#include <poll.h>
+
+/*
+* Each pollfd structure specifies a single file descriptor to watch. An array
+* of structures may be passed, instructing poll() to watch multiple files.
+* The events field is a bitmask of events to watch for on that fd, it is set by
+* the user. The revents field is a bitmask of events that occurred on the fd, it
+* is set by the kernel.
+*/
+struct pollfd
+{
+  int fd; // file descriptor
+  short events; // requested events to watch
+  short revents; // returned events witnessed
+};
+
+int poll(struct pollfd *fds, nfds_t nfds, int timeout);
+
+Events:
+Valid events to be in revents.
+POLLIN - data to read
+POLLPRI - urgent data to read
+POLLOUT - writing will not block
+POLLWRBAND - writing priority data will not block
+POLLMSG - a SIGPOLL message is available
+
+(additional, no meaning in events field)
+POLLER - error on the fd
+POLLHUP - hang up event on the fd
+POLLNVAL - invalid fd
+
+POLLIN | POLLPRI == select()'s read event
+
+Return values and errors:
+On success, poll() returns the number of fd's whose structures have non-zero
+revents fields, 0 indicates timeout and -1 failure.
+
+EBADF - bad fd
+EFAULT - the pointer to fds pointed outside this process' address space (???)
+EINTR - signal interrupted call
+EINVAL - nfds exceeded maximum
+ENOMEM - insufficient memory
+
+Example:
+#include <stdio.h>
+#include <unistd.h>
+#include <poll.h>
+
+#define TIMEOUT 5
+
+int main(void)
+{
+  struct pollfd fds[2];
+  int ret;
+
+  // watch stdin for input
+  fds[0].fd = STDIN_FILENO;
+  fds[0].events = POLLIN;
+
+  // watch stdout for output
+  fds[1].fd = STDOUT_FILENO;
+  fds[1].events = POLLOUT;
+
+  // block
+  if((ret = poll(fds, 2, TIMEOUT, * 1000)) == -1)
+  {
+    perror("poll");
+    return 1;
+  }
+
+  // no fd's ready
+  if(ret == 0)
+  {
+    printf("%d seconds elapsed.\n", TIMEOUT);
+    return 0;
+  }
+
+  if(fds[0].revents & POLLIN)
+    printf("stdin is readable\n");
+
+  if(fds[1].revents & POLLOUT)
+    printf("stdout is writable\n");
+
+  return 0;
+}
+
+See also:
+ppoll() // Linux specific
+
+Kernel internals:
+Three important kernel subsystems which implement IO are the virtual filesystem
+(VFS), page cache and page write-back. Later, we examine the IO scheduler.
+
+1) Virtual filesystem
+An abstraction mechanism that allows Linux to interact with filesystems without
+needing to know their exact type. A common file model, which Linux filesystems
+comply with, is implemented via function pointers and OOP techniques (C-style)
+as a collection of hooks for reads, writes, creating links, synchronizing etc.
+Each filesystem then registers functions for operations which it is capable of
+performing.
+
+2) Page cache
+In-memory store of recently accessed data from disk. read() will return from the
+page cache if possible. In fact, all operations occur through the page cache
+transparently.
+
+The cache exploits temporal locality, the concept that data is often accessed
+multiple times within a small period of time.
+
+Sequential locality is another concept, that data is often read sequentially.
+When the kernel reads a piece of data from disk, it also reads the next block.
+(read-ahead) Often the kernel is able to fulfill subsequent read() requests from
+the data which was read ahead.
+
+Both the cache size and read-ahead behavior are dynamic.
+
+3) Write-back
+Writing dirty buffers to disk occur when dirty buffers need to be freed to make
+room for more memory usage or when a buffer reaches its maximum age. Write-backs
+are carried out by a gang of kernel threads called flusher threads.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+EOF

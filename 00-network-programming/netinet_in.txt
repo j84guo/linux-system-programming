@@ -1,0 +1,52 @@
+<netinet/in.h> - internet address definitions
+
+Note: all ports and addresses are stored in network byte order.
+
+in_port_t // uint16_t (16 bit TCP port)
+in_addr_t // uint32_t (32 bit ipv4 address)
+sa_family_t // uint included from <sys/socket.h>
+
+INADDR_ANY // macro for ipv4 wildcard
+INET_ADDRSTRLEN // macro for ipv4 string length (16)
+
+const struct in6_addr in6addr_any // external variable for ipv6 wildcard
+INET6_ADDRSTRLEN // macro for ipv6 string length (46)
+
+/*
+* ipv4 address
+*/
+struct in_addr
+{
+  in_addr_t s_addr; // uint32_t
+};
+
+/*
+* ipv4 socket
+* cast to struct sockaddr (defined in <sys/socket.h>) for socket functions
+*/
+struct sockaddr_in
+{
+  sa_family_t sin_family; // uint defined in <sys/socket.h> (address family)
+  in_port_t sin_port; // uint16_t (port)
+  struct in_addr sin_addr; // has uint32_t s_addr field (ip address)
+};
+
+/*
+* ipv6 address
+*/
+struct in6_addr
+{
+  uint8_t s6_addr[16]; // 16 byte / 128 bit ipv6 address
+};
+
+/*
+* ipv6 socket
+*/
+struct sockaddr_in6
+{
+  sa_family_t sin6_family; // address family
+  in_port_t sin6_port; // port
+  uint32_t sin6_flowinfo; // ipv6 data
+  struct in6_addr sin6_addr; // ipv6 address
+  uint32_t sin6_scope_id; // ipv6 data
+};

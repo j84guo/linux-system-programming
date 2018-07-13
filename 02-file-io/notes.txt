@@ -22,8 +22,8 @@ which would have returned a valid file descriptor.
 
 Standard descriptors:
 Each process has fd's 0 (stdin), 1 (stdout) and 2 (stderr). Usually, stdin is
-connected with the user's keyboard, stdout and stderr with the screen. Users can
-redirect and pipe these fd's.
+connected with the user's keyboard, stdout and stderr with the terminal. Users
+can redirect and pipe these fd's.
 
 Inheriting and sharing descriptors:
 Children inherit their parents process table, but generally a change in a

@@ -1,0 +1,29 @@
+<netdb.h> - network database operation definitions (DNS)
+
+/*
+* DNS lookup result (linked list)
+*/
+struct addrinfo
+{
+  int ai_flags; // query options
+  int ai_family; // address family filter
+  int ai_socktype; // socket type filter
+  int ai_protocol; // socket protocol filter
+  socklen_t ai_addrlen; // socket address length (sockaddr_in or sockaddr_in6)
+  struct sockaddr *ai_addr; // socket address (base struct)
+  char* ai_canonname; // cannonical name
+  struct addrinfo *ai_next; // pointer to next struct addrinfo
+};
+
+/*
+* socket address structure to host name
+*/
+int getaddrinfo(const char* hostname,
+                const char* servname,
+                const struct addrinfo* hints,
+                struct addrinfo **res);
+
+/*
+* de-allocate linked list from getaddrinfo()
+*/
+void freeaddrinfo(struct addrinfo* ai);

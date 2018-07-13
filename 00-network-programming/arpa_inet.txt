@@ -1,0 +1,19 @@
+<arpa/inet.h> - internet operation definitions
+
+socklen_t // uint from <sys/socket.h>
+
+/*
+* convert short/long between host and network byte orders
+*/
+uint32_t htonl(uint32_t hostlong);
+uint16_t htons(uint16_t hostshort);
+uint32_t ntohl(uint32_t netlong);
+uint16_t ntohs(uint16_t netshort);
+
+/*
+* convert internet address between binary and text formats
+*/
+char* ntoa(struct in_addr in);
+int aton(const char* cp, struct in_addr* pin);
+const char* ntop(int af, const void* src, char* dst, socklen_t size);
+int pton(int af, const char* src, void* dst);

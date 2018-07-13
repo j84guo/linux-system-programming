@@ -1,0 +1,35 @@
+<sys/socket.h> - socket abstraction for network programming
+
+socklen_t // size of socket address struct (uint)
+sa_family_t // uint
+
+/*
+* macros
+*/
+SOCK_STREAM // stream socket
+SOCK_DGRAM // datagram socket
+SOL_SOCKET // socket level options (vs protocol level)
+AF_INET // ipv4
+AF_INET6 // ipv6
+AF_UNSPEC // ipv4 pr ipv6
+AF_UNIX // unix domain socket
+
+/*
+* base structure (see sockaddr_in, sockaddr_in6 from <netinet/in.h>)
+*/
+struct sockaddr
+{
+  sa_family_t sa_family; // address family
+  char sa_data[]; // variable length data
+};
+
+/*
+* socket functions
+*/
+int socket(int domain, int type, int protocol);
+int bind(int socket, const struct sockaddr* address, socklen_t address_len);
+int listen(int socket, int backlog);
+int accept(int socket, struct sockaddr* address, socklen_t* address_len);
+int connect(int socket, const struct sockaddr* address, socklen_t address_len);
+ssize_t recv(int socket, void* buffer, size_t length, int flags);
+ssize_t send(int socket, const void* message, size_t length, int flags);

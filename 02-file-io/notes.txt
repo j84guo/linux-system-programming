@@ -295,7 +295,9 @@ required multiples of the larger filesystem logical block size.
 
 Closing:
 After a program has finished working with a file, it can un-map the fd from the
-file close().
+file using close(). Since the kernel uses memory to maintain information for
+each open file, there is a maximum number of files that a process can open at
+once. Closing prevents fd's from leaking in long-running processes.
 
 #include <unistd.h>
 
@@ -630,40 +632,3 @@ Both the cache size and read-ahead behavior are dynamic.
 Writing dirty buffers to disk occur when dirty buffers need to be freed to make
 room for more memory usage or when a buffer reaches its maximum age. Write-backs
 are carried out by a gang of kernel threads called flusher threads.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-EOF

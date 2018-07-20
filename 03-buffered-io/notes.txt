@@ -1,0 +1,683 @@
+Minimum addressable storage:
+Recall from chapter 1 that the sector is the smallest unit of addressable
+storage on a hard disk. A block is the smallest addressable storage on a
+filesystem.
+
+Block operations:
+Inside the kernel, all filesystem operations occur in terms of blocks, i.e. all
+operations act on an amount of storage that is an integer multiple of the block
+size. For example, when writing 4.5 blocks of data, the kernel will write 5
+blocks, implying reading the whole fifth block, updating half and writing it
+back out in its entirety to disk. A more pathological case involves writing 1
+byte at a time, unbuffered system calls cause 1 block to be written for each
+byte! Obviously, partial block operations are inefficient.
+
+User buffered I/O:
+Most user space applications perform I/O in terms of higher level abstractions,
+e.g. strings and fields whose size is independent of the filesystem block size.
+To minimize inefficiency, I/O is often buffered in user space, allowing
+applications to read and write data in whatever amount they need, while actual
+I/O occurs in terms of blocks.
+
+Buffering can be done by the application (databases) or transparently by
+a library (C standard library), but this occurs in user space as opposed to in
+the kernel (the kernel's I/O subsystem delays writes and reads ahead using in-
+memory buffers).
+
+# copies 2 MB in 1 byte chunks
+dd bs=1 count=2097152 if=/dev/zero of=pirate.txt
+
+# copies 2 MB in 1024 byte chunks
+dd bs=1024 count=2048 if=/dev/zero of=pirate.txt
+
+# copies 2 MB in 1031 byte chunks
+# this takes longer than 102 byte chunks because
+# the requests become unaligned with block boundaries
+# we can infer that the block size is likely an integer
+# multiple of 1024 or an integer divisor
+dd bs=1031 count=2048 if=/dev/zero of=pirate.txt
+
+In practice, block sizes are 512, 1024, 2048, 4096 or 8192 bytes in size. It's
+usually not necessary to know the block size, just don't pick an oddball size
+like 1031, which no filesystem in the history of Unix has ever used. Use an
+integer multiple or divisor to keep I/O request block-aligned.
+
+As mentioned, applications don't usually deal with blocks, rather they deal with
+fields, lines and characters. User buffering means data requested to be written
+is stored in a buffer in the process' own address space. Then the buffer reaches
+a set size, it is written to disk all at once. Likewise, read data is read into
+a user buffer all at once, and given to the application from the user-space
+buffer. When the buffer is empty, another block-aligned chunk is read in all at
+once.
+
+The end result is fewer system calls for large block-aligned chunks of data,
+greatly improving performance compared with pure system call I/O.
+
+Note: The C++ standard library provides the <iostream> library for robust user
+space buffering.
+
+C standard library:
+The standard I/O library <stdio.h> provides platform independent user-buffering.
+Unlike programming languages such as Fortran, C does not include built-in
+support or keywords providing functionality beyond flow control, arithmetic,
+etc. As C developed, users wrote standard routines to perform operations with
+strings, advanced math, time and dates, I/O, etc. With the 1989 C standard (C89)
+this core functionality was formalized as the standard C library.
+
+See also: C95, C99, C11, although standard I/O hasn't changed greatly since C89.
+
+Note: C standards leave some details up to the implementation, and
+implementations often add features. This chapter deals with the interfaces
+provided by glibc on modern Linux systems.
+
+Note: Whether an application uses standard I/O, custom rolled I/O or straight
+system calls depends on the engineers' evaluation of their needs.
+
+Note: <stdio.h> defines a negative integer EOF which indicates end of data from
+a file stream.
+
+1) File Pointers:
+Standard I/O routines do not operate directly on file descriptors, rather they
+use their own unique identifier, file pointers. Inside the C library, the file
+pointer maps to a descriptor. A pointer to the FILE typedef, defined in
+<stdio.h>, is a file pointer. An open file called a stream. Streams may be open
+for reading, writing or both.
+
+Note: FILE is in capitals because the standard library used to be implemented as
+a set of macros!
+
+2.a) Opening stream:
+
+#include <stdio.h>
+
+/*
+* opens a file at "path" with the behavior specified by "mode"
+* returns a valid FILE pointer on success, NULL on failure and sets errno
+*/
+FILE* fopen(const char* path, const char* mode);
+
+Modes:
+r - open for reading, stream position at the start
+r+ - open for reading and writing, stream position at the start
+w - open for writing, truncate size to 0 if exists, create if not exists, file
+    position at the start
+w+ - open for writing and reading, truncate size to 0 if exists, create if not
+     exists, stream position at the start
+a - open for writing in append mode, create if not exists, stream position at end,
+a+ - open for reading and writing in append mode, create if not exists, stream
+     position at end
+b - a given mode may include this character, indicating binary vs text file, but
+    on Linux with standard C, this flag is ignored as all files are treated as
+    bytes
+
+Questions: how are permissions set?
+
+e.g.
+FILE* stream;
+stream = fopen("/etc/manifest", "r");
+if(stream == NULL)
+{
+  // error
+}
+
+
+2.b) Opening via file descriptor:
+
+#include <stdio.h>
+
+/*
+* converts an already open file descriptor to a stream
+* mode must be compatible with the fd's flags (<fcntl.h>, O_RDONLY, etc.)
+* also w, w+ will NOT cause truncation
+* the stream position associated with the fd is used
+*
+* any created files will have mode S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP |
+* S_IROTH | S_IWOTH (0666), as modified by the process's umask value
+*/
+FILE* fdopen(int fd, const char* mode);
+
+Note: system calls should not be performed on the fd after converting to stream.
+
+e.g.
+int fd = open("/home/jguo/test.txt", O_RDONLY);
+if(fd == -1)
+{
+  // error
+}
+
+FILE* stream = fdopen(fd, "r");
+if(stream == NULL)
+{
+  // error
+}
+
+3) Closing stream:
+
+#include <stdio.h>
+
+/*
+* closes the underlying file descriptor
+* unwritten user-buffered data is flushed to the kernel
+*/
+int fclose(FILE* stream);
+
+#define _GNU_SOURCE
+#include <stdio.h>
+
+/*
+* closes all streams associated with the current process,
+* including stdin, stdout and stderr
+*/
+int fcloseall(void);
+
+4) Reading a stream:
+The standard C library provides functions to read from a stream in 3 ways:
+-> by character
+-> by line
+-> by some number of bytes
+
+a) Reading a character
+
+#include <stdio.h>
+
+/*
+* reads the next character from the stream and returns it as an unsigned char
+* cast to an int
+*
+* the cast ensures sufficient range for EOF and error
+*
+* storing the return value as an char instead of int is a common mistake, but it
+* loses the ability to detect errors
+*/
+int fgetc(FILE* stream);
+
+e.g.
+int c = fgetc(stream);
+if (c == EOF)
+{
+  //error
+} else
+{
+  printf("c=%c\n", (char) c);
+}
+
+#include <stdio.h>
+
+/*
+* returns character c (cast from int to unsigned char) back to the stream
+* on success, c is returned, on failure, EOF
+* note calling a seek function on a stream after ungetc() and before a read
+* request, all push-backed characters are discarded
+* this is true among threads in the same process, as they share the same buffer
+*/
+int ungetc(int c, FILE* stream);
+
+b) Reading a line
+#include <stdio.h>
+
+/*
+* reads up to ones less than size bytes from the stream and stores them in
+* str, along with a null terminator
+*
+* reading stops at a newline, in which case the "\n" is also stored in str
+* str is returned on success, NULL on failure
+*/
+char* fgets(char* str, int size, FILE* stream);
+
+e.g.
+
+/*
+* LINE_MAX is defined by POSIX in <limits.h>
+* it is not necessary on Linux, but can be used for maximum portability
+*/
+char buf[LINE_MAX];
+
+if(fgets(buf, LINE_MAX, stream) == NULL)
+{
+  // error
+}
+
+Sometimes programs want to use a delimiter other than a newline, other times no
+delimiter is wanted at all, rarely do programs want the delimiter in the buffer!
+The fgets() replacements below uses fgetc().
+
+/*
+* reads up to n bytes or EOF
+*/
+char *s;
+int c;
+
+s = str;
+while(--n > 0 && (c = fgetc(stream) != EOF))
+  *s++ = c;
+*s = '\0'
+
+/*
+* reads up to a delimiter d (cannot be null terminator)
+*/
+char *s;
+int c = 0;
+
+s = str;
+while(--n > 0 && (c = fgetc(stream)) != EOF && (*s++ = c) != d)
+  ;
+
+if(c == d)
+  *--s = '\0';
+else
+  *s = '\0'
+
+c) Reading binary data
+Sometimes reading characters or lines is insufficient, applications may want to
+read complex binary data, like C structures.
+
+#include <stdio.h>
+
+/*
+* reads up to nr blocks of data, each of size bytes from stream into buf
+* the number of elements read (not bytes) is returned
+*
+* EOF or failure is indicated via a return value < nr, there is no way to
+* distinguish between the two cases except by ferror() and feof()
+*/
+size_t fread(void* buf, size_t size, size_t nr, FILE* stream);
+
+Note: because of differences in variable sizes, alignment, padding and byte
+order, binary data written on one machine may not be readable by a different
+application, even the same application on a different machine.
+
+/*
+* read a single element of linear bytes from a stream
+*/
+char buf[64];
+size_t nr = fread(buf, sizeof(buf), 1, stream);
+if (nr == 0)
+{
+  // error
+}
+
+Issues of alignment:
+Machine architectures have different alignment requirements. Processors deal
+with memory in a specific granularity, such as 4 or 8 bytes (words). Since
+process address spaces begin at 0, memory access must occur at integer multiples
+of the granularity (word size).
+
+Consequently, C variables must be stored at aligned addresses. Misaligned data
+may be access with a performance penalty, not at all, or dropping lower order
+bits.
+
+Dealing with structures, performing manual memory management, saving binary data
+to disk and communicating over a network may bring alignment issues.
+
+5) Writing to a stream
+The standard C library provides functions for 3 kinds of writing:
+-> by character
+-> by string
+-> by some number of bytes
+
+a) Writing a character
+#include <stdio.h>
+
+/*
+* writes the byte specified by c (cast to unsigned char) to stream
+* returns c on success, EOF on failure
+*/
+int fputc(int c, FILE* stream);
+
+e.g.
+if(fputc('p', stream) == EOF)
+{
+  // error
+}
+
+b) writing a string of characters
+
+#include <stdio.h>
+
+/*
+* writes (null-terminated) str to stream
+* returns non negative integer on success, EOF on failure
+*/
+int fputs(const char* str, FILE* stream);
+
+FILE* stream = open("journal.txt", "a");
+if(stream == NULL)
+{
+  // error
+}
+
+if(fputs("This ship is made of wood.\n", stream) == EOF)
+{
+  // error
+}
+
+if(fclose(stream) == EOF)
+{
+  // error
+}
+
+c) Writing binary data
+
+#include <stdio.h>
+
+/*
+* write up to nr elements to stream, each of size bytes from buf
+* file pointer advanced by total number of bytes written
+* the number of elements successfully written is returned, < nr means error
+*/
+size_t fwrite(void* buf, size_t size, size_t nr, FILE* stream);
+
+This example program makes use of the standard functions covered so far.
+
+#include <stdio.h>
+
+struct pirate
+{
+  char name[100];
+  unsigned long booty;
+  unsigned long beard_len;
+};
+
+int main()
+{
+  FILE *in, *out;
+  struct pirate p, blackbeard = {"Edward Teach", 950, 48};
+
+  /*
+  * write struct as binary data to file
+  */
+
+  out = fopen("pirate_binary", "w");
+  if(out == NULL)
+  {
+    perror("fopen");
+    return 1;
+  }
+
+  // int is implcitly converted to an unsigned type since nr is size_t
+  if(fwrite(&blackbeard, sizeof blackbeard, 1, out) == 0)
+  {
+    perror("fwrite");
+    return 1;
+  }
+
+  if(fclose(out) != 0)
+  {
+    perror("fclose");
+    return 1;
+  }
+
+  /*
+  * read binary data as struct from file
+  */
+
+  in = fopen("pirate_binary", "r");
+  if(in == NULL)
+  {
+    perror("fopen");
+    return 1;
+  }
+
+  if(fread(&p, sizeof(struct pirate), 1, in) == 0)
+  {
+    perror("fread");
+    return 1;
+  }
+
+  if(fclose(out) != 0)
+  {
+    perror("fclose");
+    return 1;
+  }
+
+  printf("name=%s, booty=%lu, beard_len=%lu", p.name, p.booty, p.beard_len);
+
+  return 0;
+}
+
+Note: due to differences in variable size, alignment and so on, binary data
+written by fwrite() by one application may not be readable by other
+applications, even the same one on a different machine. Width and alignment
+issues are only guaranteed to be the same on a particular machine type and ABI.
+
+6) Seeking a stream:
+It is often necessary to manipulate the current stream position, for example to
+go back to the start of the stream or jump around in order to read a complex
+record-based file.
+
+#include <stdio.h>
+
+/*
+* sets the stream position based on offset and whence
+*
+* whence can be set to:
+* SEEK_SET - stream position set to offset
+* SEEK_CUR - stream position set to current + offset
+* SEEK_END - stream position set to end + offset
+*
+* on success returns 0, clears the stream's EOF indicator, undoes any effects
+* of ungetc()
+* on error returns -1 and sets errno, common errors are EBADF (invalid stream)
+* and EINVAL (invalid whence)
+*/
+int fseek(FILE* stream, long offset, int whence);
+
+#include <stdio.h>
+
+/*
+* sets stream position to pos, works like fseek() called with whence SEEK_SET
+* returns 0 on success, -1 on failure and sets errno
+*
+* Note: this function is provided solely for non-Unix platforms use complex
+* type to represent stream positions so long may not be sufficient
+*/
+int fsetpos(FILE* stream, fpos_t* pos);
+
+#include <stdio.h>
+
+/*
+* resets stream position to start, same as: fseek(stream, 0, SEEK_SET) except it
+* also clears the stream's error indicator (see ferror() and feof())
+* note that rewind() sets errno on erro, but does not return a value, so a
+* caller should clear errno and then check it
+*/
+void rewind(FILE* stream);
+
+#include <stdio.h>
+
+/*
+* unlike lseek(), fseek() does not return the updated position
+* ftell() returns a stream's current position or -1 and sets errno on failure
+*/
+long ftell(FILE* stream);
+
+#include <stdio.h>
+
+/*
+* puts the position of stream in pos, returns 0 on success, -1 and sets errno on
+* failure
+* Note: like fsetpos(), this function is provided solely for non-Unix platforms.
+*/
+int fgetpos(FILE* stream, fpos_t* pos);
+
+7) Flushing a stream:
+The standard I/O library allows a stream to be flushed to the kernel, meaning
+unwritten data in the user-space buffer is written via the write() system call.
+
+#include <stdio.h>
+
+/*
+* if stream is NULL, all open streams are flushed
+* returns 0 on success, EOF and sets errno on failure
+* Note: to ensure data hits the backing store, programmers should follow
+* fflush() with fsync()
+*/
+int fflush(FILE* stream);
+
+Errors and End-of-File:
+Some of the standard I/O interfaces, like fread(), communicate failures back to
+the caller poorly, as they provide no mechanism for differentiating between
+error and EOF. There are 2 standard functions for checking if a stream has hit
+an error or EOF.
+
+#include <stdio.h>
+
+/*
+* a stream has an error indicator set by standard I/O functions
+* returns 0 if NO error, non-zero if there is an error
+*/
+int ferror(FILE* stream);
+
+#include <stdio.h>
+
+/*
+* a stream has an EOF indicator set by standard I/O functions
+* returns 0 if NOT EOF, non-zero if at EOF
+*/
+int feof(FILE* stream);
+
+#include <stdio.h>
+
+/*
+* clear error and EOF indicators for a stream
+* no return value, does not fail
+* only call clearerr() after checking the error and EOF indicators first
+*/
+void clearerr(FILE* stream);
+
+e.g.
+if(ferror(f) != 0)
+  printf("Error on f.\n");
+
+if(feof(f) != 0)
+  printf("EOF on f.\n");
+
+clearerr(f);
+
+Obtaining the associated file descriptor:
+Sometimes it is necessary to perform a system call on the file descriptor of a
+stream.
+
+#include <stdio.h>
+
+/*
+* returns the fd, or -1 on failure and sets errno to EBADF
+* system calls usually shouldn't be mixed with standard I/O calls, be sure to
+* flush a stream before manipulating the underlying fd
+*/
+int fileno(FILE* stream);
+
+Controlling the type of buffering:
+Standard I/O implements 3 types of user buffering, which are suitable for
+different circumstances.
+
+a) unbuffered
+No user-buffering is performed. This is rarely used, except stderr is by default
+unbuffered.
+
+b) line-buffered
+Buffering is performed on a per-line basis, meaning the buffer is submitted to
+the kernel at each newline. This is the default for streams connected to a
+terminal like stdout (except stderr, as above).
+
+c) block-buffered
+Buffering is performed on a per-block basis, where a block is a fixed number of
+bytes. By default, file streams are block-buffered (full-buffering in standard
+I/O parlance).
+
+#include <stdio.h>
+
+/*
+* sets the buffering mode of a stream
+* see man 3 setvbuf
+*/
+int setvbuf(FILE* stream, char* buf, int mode, size_t size);
+
+Thread safety:
+Threads are linear sequences of execution within a process. Most processes are
+single-threaded, although it is sometimes advantageous for a process to have
+multiple. Threads execute instructions in the same address space. Without
+explicit co-ordination, they can interleave in any way, including truly in
+parallel on a multi-processor system. Finally, threads may overwrite shared
+data unless care is taken to synchronize access (locking) or making data thread
+local (thread confinement).
+
+Operating systems supporting threads provide locking mechanisms (programming
+constructs that ensure mutual exclusion) which ensure threads can execute
+instructions on a piece of data atomically. The critical section refers to the
+area of code that is executed without interference from other threads.
+
+The standard I/O functions are thread-safe. Internally, they associate a lock, a
+lock count and an owning thread with each stream. Any thread wishing to operate
+on the stream much acquire the lock first. Thus, standard I/O is atomic within
+the context of a single function call.
+
+In many applications, multiple write calls must be made atomically. The standard
+library provides functions for manipulating the lock associated with a stream.
+
+Manual locking:
+
+#include <stdio.h>
+
+/*
+* waits until the stream is not locked, increments the lock count, acquires the
+* lock, becomes the owning thread of the stream and returns
+*/
+void flockfile(FILE* stream);
+
+#include <stdio.h>
+
+/*
+* decrements the lock count associated with a stream, if it reaches zero, the
+* thread relinquishes ownership of the stream
+*/
+void funlockfile(FILE* stream);
+
+Note: these calls can next. A thread can issue multiple flockfile() calls and
+must issue the same number of funlockfile() before another thread can own the
+stream.
+
+#include <stdio.h>
+
+/*
+* non-blocking version of ftrylockfile()
+* returns non-zero value if the stream is locked, returns 0 and performs the
+* flockfile() steps if the stream in not locked
+*/
+int ftrylockfile(FILE* stream);
+
+e.g.
+flockfile(stream);
+
+fputs("List of treasure:\n", stream);
+fputs("(1) 500 gold coins\n", stream);
+fputs("(2) Wonderfully ornate dishware\n", stream);
+
+funlockfile(stream);
+
+Note: ideally, an application is designed so that multiple threads are not
+submitting I/O to the same stream.
+
+Unlocked stream operations:
+Linux provides a family of functions which perform standard I/O without locking.
+The application developer can implement manual locking, possibly with gains in
+efficiency.
+
+// format
+type name_unlocked(args...);
+
+Note: some programs ensure thread safety by delegating I/O to a single thread,
+a form of thread confinement.
+
+Critique of Standard I/O:
+Some experts point to flaws in the standard IO library.
+-> some functions like fgets() are occasionally inadequate
+-> data is double copied, on reads from the kernel buffer to the standard
+   library buffer than to the user provided buffer, on writes the other way
+   around
+
+Usage:
+Standard I/O should be considered when:
+-> you want to minimize the number of system calls
+-> you want I/O to be block-aligned (performance)
+-> access patterns are character or line based 

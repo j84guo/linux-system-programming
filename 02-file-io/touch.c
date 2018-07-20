@@ -1,4 +1,4 @@
-#include <sys/types.h> // mode_t
+#include <sys/types.h> // mode_t (integer type)
 #include <sys/stat.h> // permission bits (S_IRUSR)
 #include <unistd.h> // close()
 #include <fcntl.h> // open(), open options (O_CREAT)
@@ -16,7 +16,7 @@ int main(int argc, char** argv)
 
   int fd;
 
-  if((fd = open(argv[1], O_CREAT, default_mode())) == -1)
+  if((fd = open(argv[1], O_RDONLY O_CREAT, default_mode())) == -1)
   {
     perror("open");
     return 1;

@@ -1,5 +1,10 @@
 #include <stdio.h>
 
+/*
+* FILE* fopen(const char *path, const char *mode);
+*
+* int fclose(FILE *stream);
+*/
 int main(int argc, char** argv)
 {
   if(argc != 2)

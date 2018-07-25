@@ -4,6 +4,8 @@
 #define INIT_BUF 32;
 
 /*
+* int fgetc(FILE *stream);
+*
 * see also ungetc(), which puts a byte back onto the stream
 */
 int main(int argc, char** argv)
@@ -59,4 +61,9 @@ int main(int argc, char** argv)
 
   buf[len] = '\0';
   printf("%s", buf);
+
+  /*
+  * free the buffer to avoid memory leak
+  */
+  free(buf);
 }

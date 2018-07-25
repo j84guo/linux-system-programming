@@ -6,6 +6,9 @@
 
 mode_t sixFourFour();
 
+/*
+* FILE* fdopen(int fd, const char *mode);
+*/
 int main(int argc, char** argv)
 {
   if(argc != 2)

@@ -28,26 +28,25 @@ int main()
   char buf[LINE_MAX];
   buf[0] = '\0';
 
-  if(fgets(buf, LINE_MAX, stdin) == NULL)
+  if(fgets(buf, LINE_MAX, stdin) != NULL)
   {
-    if(ferror(stdin))
+    for(int i=0; i<strlen(buf); ++i)
     {
-      perror("fgetc");
-      return 1;
-    }
-    else
-    {
-      printf("received EOF, not writing to file\n");
+      if(fputc(buf[i], stream) == EOF)
+      {
+        perror("fputc");
+        return 1;
+      }
     }
   }
-
-  for(int i=0; i<strlen(buf); ++i)
+  else if(ferror(stdin))
   {
-    if(fputc(buf[i], stream) == EOF)
-    {
-      perror("fputc");
-      return 1;
-    }
+    perror("fgetc");
+    return 1;
+  }
+  else
+  {
+    printf("received EOF, not writing to file\n");
   }
 
   if(fclose(stream) == EOF)

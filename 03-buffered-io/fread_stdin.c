@@ -14,20 +14,19 @@ int main()
   char buf[cap + 1];
   size_t nr = fread(buf, cap, 1, stdin);
 
-  if(nr < 1)
+  if(nr == 1)
   {
-    if(ferror(stdin))
-    {
-      perror("fread");
-      return 1;
-    }
-    else
-    {
-      printf("received EOF\n");
-      return 0;
-    }
+    buf[cap] = '\0';
+    printf("read exactly %d bytes from stdin: %s", cap, buf);
   }
-
-  buf[cap] = '\0';
-  printf("read exactly %d bytes from stdin: %s", cap, buf);
+  else if(ferror(stdin))
+  {
+    perror("fread");
+    return 1;
+  }
+  else
+  {
+    printf("received EOF\n");
+    return 0;
+  }
 }

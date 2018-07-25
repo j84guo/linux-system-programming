@@ -2,11 +2,13 @@
 
 #include <fcntl.h>
 
+#define BUF_SIZE 512
+
 int main(int argc, char** argv)
 {
   if(argc != 3)
   {
-    fprintf(stderr, "usage: ./fwrite_copy <src_name> <dst_name>");
+    fprintf(stderr, "usage: ./fwrite_copy <src_name> <dst_name>\n");
     return 1;
   }
 
@@ -27,12 +29,46 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  FILE* dst_stream = fdopen(fd, "r");
+  /*
+  * note that a failure at this fdopen() causes an empty dst_name file to be
+  * created, some cleanup should be performed
+  */
+  FILE* dst_stream = fdopen(fd, "w");
   if(dst_stream == NULL)
   {
     perror("fopen");
     return 1;
   }
 
-  // read and write
+  char buf[BUF_SIZE];
+  while(fread(buf, BUF_SIZE, 1, src_stream) == 1)
+  {
+    if(fwrite(buf, BUF_SIZE, 1, dst_stream) != 1)
+    {
+      perror("fwrite");
+      return 1;
+    }
+  }
+
+  if(ferror(src_stream))
+  {
+    perror("fread");
+    return 1;
+  }
+  else
+  {
+    printf("received EOF\n");
+  }
+
+  if(fclose(src_stream) == EOF)
+  {
+    perror("fclose");
+    return 1;
+  }
+
+  if(fclose(dst_stream) == EOF)
+  {
+    perror("fclose");
+    return 1;
+  }
 }

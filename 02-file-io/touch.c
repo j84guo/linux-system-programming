@@ -16,7 +16,7 @@ int main(int argc, char** argv)
 
   int fd;
 
-  if((fd = open(argv[1], O_RDONLY O_CREAT, default_mode())) == -1)
+  if((fd = open(argv[1], O_RDONLY |  O_CREAT, default_mode())) == -1)
   {
     perror("open");
     return 1;

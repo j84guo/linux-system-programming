@@ -42,12 +42,14 @@ void print_fd(int fd)
     buffer[nr] = '\0';
     printf("%s", buffer);
   }
+
+  printf("received EOF\n");
 }
 
 void print_args(int argc, char** argv)
 {
   for(int i=1; i<argc; ++i)
     printf("%s ", argv[i]);
-    
+
   printf("\n");
 }

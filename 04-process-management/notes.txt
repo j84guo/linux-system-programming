@@ -1,0 +1,220 @@
+Processes:
+After files, processes are the most fundamental abstraction in a Unix system.
+As object code in execution (running programs) they include assembly language,
+data, resources, state and a virtualized computer. Unix seperates the creation
+of a new process from the act of loating a binary image, i.e. the fork and exec
+system calls.
+
+Programs, Processes and Threads:
+A binary is compiled, executable code stored on disk, e.g. /bin/ls. A process
+is a running program, which means the binary loaded into memory, virtualized
+memory, kernel resources (e.g. open files), a security context (e.g. associated
+user) and >= 1 threads. A thread is the unit of activity within a process, each
+has its own virtualized processor which includes a stack, processor state (e.g.
+registers) and an instruction pointer. As memory virtualization is associated
+with a process, threads share the same memory address space.
+
+Process ID:
+Each process a unique identifier, its PID, which is unique at any single point
+in time. From the view of a process, its PID never changes, and generally
+programs assume that the kernel does not readily reuse PID's.
+
+The idle process, run by the kernel when there are no other runnable processes,
+has PID 0. The first process run by the kernel after booting the system, init,
+has PID 1. Note init refers to both the initial process the kernel runs and the
+specific program. Unless the user tells the kernel which init to run, the
+kernel tries four executable in order: /sbin/init, /etc/init, /bin/init,
+/bin/sh, halting with a panic if all fail. After handoff from the kernel, init
+handles the remaining boot, typically initializing the system, starting
+services and launching a login program.
+
+1) PID Allocation
+The kernel imposes a default max PID of 32768. This is for compatibility with
+older Unix systems, which use signed 16 bit types for PID's. Sysadmin's may set
+a higher value via /proc/sys/kernel/pid_max. PID allocation occurs in a
+strictly linear fashion. The kernel does not re-use values until it wraps
+around the top, providing short term comfort in PID stability and uniqueness.
+Therefore, If PID 17 is the highest currently allocated PID, the next will be
+18, regardless of wither the process with PID 17 is still running.
+
+2) Process Hierarchy
+A process which spawns another is knows as the parent, and the new process as
+the child. Every process has one parent (except init) indicated by its parent
+process id, PPID.
+
+Each process is owned by a user and group, determining access rights to 
+resources. Each child inherits is parent's user and group ownership. Note that
+users and groups are integers to the kernel, their mapping to human readable
+names is stored in /etc/passwd and /etc/group.
+
+Each process is also part of a process group. Children normally belong to their
+parent gorup. In addition, shell pipelines, e.g. ls | less, run commands in the
+same process group. Groups make it easy to send signals or retrieve information
+with an entire pipeline, as in shell job control.
+
+3) pid_t
+Processes in C are represented by the pid_t type, defined in <sys/types.h>. The
+backing C type is architecture specific, on Linux it is typedef to int.
+
+4) Obtaining PID and PPID
+
+#include <sys/types.h>
+#include <sys/unistd.h>
+
+// PID of invoking process
+pid_t getpid();
+
+// PPID
+pid_t getppid();
+
+// neither call can return an error, making usage simple
+printf("my pid=%jd\n", (intmax_t) getpid());
+printf("parent pid=%jd\n", (intmax_t) getppid());
+
+Running a New Process:
+Again, Unix seperates loading a program into memory and executing it from
+creation of a process. One system call, exec, loads the binary into memory,
+replacing the previous contents of the address space and begins execution of
+the new program. A different system call, fork, is used to create a process,
+which starts as a near-duplicate of its parent. Therefore, fork and exec start
+a new program in a new process.
+
+1) exec
+Rather than a single exec function, there is a family built on a single system
+call.
+
+#include <unistd.h>
+
+/*
+* replaces the current process image by loading the program at path
+* the signature is variadic, each arg is passed to the program
+* note the list must be null terminated
+*/
+int execl(const char *path, const char *arg, ...);
+
+/*
+* e.g. executing /bin/vi, note that by convention, shells put the basename of
+* the path into the first argument, in many cases multiple hardlinks (inode
+* with different directory entries mapped to them), and the binary has
+* different behaviour based on the name passed in
+*/
+#include <unistd.h>
+#include <stdio.h> 
+
+int ret = execl("/use/bin/vim", "vim", "notes.txt", NULL);
+if(ret == -1) perror("execl");
+
+Normally, execl doesn not return, as execution begins with the newly loaded
+prgram and the old program simply does not exist any more in the process
+address space. On error, execl() returns -1 and sets errno.
+
+Successfull invocation changes not only the address space but also:
+-pending signals are lost
+-signals that the process is catching are returned to their default behaviour
+ since the original handlers don't exist anymore
+-memory locks are dropped
+-thread attributes are mostly defaulted
+-thread statistics are mostly reset
+-anything relating to the process' address space, including mapped files, is
+ cleared
+-anything that exists solely in user space, including features of the C
+ library such as atexit(), is cleared
+
+Some properties do not change, for example the PID, PPID, priority. Normally,
+open files are also inherited accross an exec. Newly executed processes can
+therefore access open files, assuming the file descriptors are known. This is
+often not desired, best practice is to close files before exec, and it is also
+possible to instruct the kernel to do so via fcntl.
+
+Other exec Calls:
+
+#include <unistd.h>
+
+/*
+* mnemonics:
+* l and v indicate whether arguments are passed in a list or array (vector)
+* p denotes that the user's path is searched for the file, therefore p variants
+* only need to specify  a file name
+* e means that a new environment is supplied for the new process
+*
+* notes:
+* processes inehrit their environment variables via exec calls, see man execve 
+* const applies to the type on its left, unless it is on the extreme left, in
+* which case it applies to the immediate right, so int const * is a pointer to
+* constant integer, while int * const, is a constant pointer to an integer
+*/
+
+// argument list, look for file in path
+int execlp(const char *file, const char *arg, ...);
+
+// argument array, create new environment
+int execle(const char *path, const char *arg, ..., char *const envp[]);
+
+// argument array
+int execv(const char *path, char *const argv[]);
+
+// argument array, look for file in path
+int execvp(const char *path, char *const argv[]);
+
+// argument array, create new environment
+int execve(const char *file, char *const argv[], char *const envp[]);
+
+Although there is no technical reason for the omission, the exec family has no
+members which searches path and provides a new environment. This is probably
+because p variants were intended for use by shells, and shell executed
+processes generally inherit their environments from the shell.
+
+/*
+* e.g. executing vim via execlp()
+*/
+#include <unistd.h>
+#include <stdio.h> 
+
+int ret = execlp("vim", "vim", "notes.txt", NULL);
+if(ret == -1) perror("execlp");
+
+Set group id and set user id programs (processes which run as the binary owner
+as opposed to the invoker) should never invoke the shell. Doing so opens a
+security hole as the invoking user may set environment variables to manipulate
+shell behaviour, e.g. path injection, where the attacker modifies the path to
+execute a binary of their choosing, allowing the attacker to run any binary
+using the privilleges of the set group id or set user id program.
+
+With the array must be NULL terminated in v variants. 
+
+/*
+* e.g. executing git status via execv
+*/
+#include <unistd.h>
+#include <stdio.h>
+
+char *const args = {"git", "status", NULL};
+int ret = execv("/usr/bin/git", args);
+if(ret == -1) perror("execv");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

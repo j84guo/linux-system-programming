@@ -292,9 +292,174 @@ Copy on write pages is a lazy optimization strategy desgined to mitigate the
 overhead of duplicating resources. If multiple consumers request read access to
 their own copies of a resource, duplicates do not need to be made, instead they
 each get a pointer to the resource and the illusion of exclusive access remains
-while they only read. If a consumer attempts to modify a resource, it is
-duplicated and the new copy is given to that consumer. Hence copy only occurs
-on write.
+as long as they only read. If a consumer attempts to modify a resource, it is
+duplicated and the new copy is given to that consumer. Other consumers continue
+to share the original resource copy. Hence copy only occurs on write.
+
+In general, the advantage of lazy algorithms is to defer expensive operations
+until the last possible moment, in this case a copy is never needed until a
+consumer wants to modify a resource.
+
+In the specific case of virtual memory, copy on write occurs on a page by page
+basis. As long as a process does not modify all the pages in its address space,
+a full copy of the parent address space is not needed. After fork() both parent
+and child believe they have a unique address space, while in fact they are
+sharing the parent's original pages, which may be shared by other parent's and
+children.
+
+The kernel implementation is simple, pages are marked read only, and as copy on
+write in the kernel's page data structures. If either process attempts to
+modify a page, a page fault occurs. The kernel handles the fault by
+transparently making a copy. The copy-on-write attribute is cleared and it is
+no longer shared. Modern machine architectures provide hardware level support
+for copy on write.
+
+Finally, since fork() is often followd by an exec*(), copy on write prevents
+unnecessarily copying over the parent's address space only to overwrite it.
+
+vfork():
+Before copy on write pages, Unix designers were concerned with wasteful address
+space copying furing fork() + exec*(), so they introduced vfork() system call.
+
+#include <sys/types.h>
+#include <unistd.h>
+
+/*
+ * Successfull invocation behaves like fork() except the child must immediately
+ * issue a successfull call to an exec*() ot _exit(). This system call avoids
+ * address space and page table copies by suspending the parent process until
+ * the child terminates or loads a new binary image. In the interim both share,
+ * without copy on write semantics, their address space and page table entries.
+ * In fact, the only work done by vfork() is duplicating internel kernel data
+ * structures, so the child should not modify any memory in its address space.
+ * vfork() is faster than fork() even with copy on write since page table
+ * entries do not have to be copied.
+ *
+ * Warning: vfork() is considered a relic and fork() is almost always better.
+ * Consider if a child fails to exec*(), the parent would suspend indefinitely.
+ */
+pid_t vfork();
+
+Terminating a Process:
+#include <stdlib.h>
+
+/*
+ * defined by POSIX and C89
+ */
+void exit(int status);
+
+This call performs basic shutdown steps, then instructs the kernel to terminate
+the process. It does not return any error, or return at all. Status denotes the
+process exit code, which can be checked by other programs like the shell.
+Typically, 0 means success and 1 or -1 failure. EXIT_SUCCESS and EXIT_FAILURE
+are defined as portable ways to represent these.
+
+Before termination, the C library performs the following:
+-Call any functions registered with atexit() or on_exit() in the reverse order
+ of registration.
+-Flush all open stdio streams.
+-Remove temporary files created with tmpfile().
+
+The system call _exit() is finally invoked by exit() to let the kernel handle
+the rest of the termination process.
+
+#include <unistd.h>
+
+/*
+ * The kernel cleans up resources associated with a process that are no longer
+ * in use. This may include allocated memory, open files, System V semaphores.
+ * After cleanup, the kernel destroys the process and notifies the parent of
+ * its child's demise.
+ */
+void _exit(int status);
+
+Applications may call _exit() directly, but most need the cleanup by exit().
+
+#include <stdlib.h>
+
+/*
+ * In a redundant stroke of redundancy, the ISO C99 standard added _Exit()
+ * which is identical to _exit().
+ */
+void _Exit(int status);
+
+The classic way to end a program is not via a explicit system call, but by
+returning form the main function., the compiler inserts an implicit call to
+exit(). It is good coding practice to explicitly return an exit status either
+via exit() or return in main().
+
+A process may also terminate if it receives a signal whose default action is to
+terminate the process. Such signals include SIGTERM and SIGKILL.
+
+A final way to end a process; execution is by incurring the wrath of the
+kernel, which can kill a process for executing an illegal instruction, causing
+a segmentation fault, running out of memory, consuming too many resources, etc.
+
+atexit():
+POSIX defines the atexit() library call, used to register functions to be
+called upon process termination.
+
+#include <stdlib.h>
+
+int atexit(void (*func)());
+
+Sucessful invocation register the function pointer to run during normal program
+termination (exit() or return from main()). After exec*(), the list of
+registered functions is cleared, as they don't exist in the new process address
+space. The argument must be a pointer to a function which takes no arguments
+and returs nothing (i.e. void func();). Functions are invoked in the reverse
+order they are registered in (stack). Registered functions must not call exit()
+as that will cause infinite recursion. Even _exit() in a handler is not
+recommended, as other shutdown steps may be skipped.
+
+POSIX required atexit() to support at least ATEXIT_MAX >= 32 handlers.
+
+/*
+ * The exact max may be optained via sysconf().
+ */
+long max = sysconf(_SC_ATEXIT_MAX);
+printf("%ld\n", max);
+
+On success, ateixt() returns 0, on error, -1.
+
+#include <stdio.h>
+#include <stdlib.h>
+
+void out()
+{
+    printf("atexit() succeeded");
+}
+
+int main()
+{
+    if(atexit(out))
+        fprintf(stderr, "atexit() failed")
+}
+
+on_exit():
+Linux glibc also supports on_exit(), which is similar to atexit() but takes a
+function pointer with a different prototype.
+
+#include <stdlib.h>
+
+/*
+ * Warning: non-standard.
+ */
+int on_exit(void (*func)(int, void *), void *arg);
+
+e.g.
+int handler(int status, void *arg);
+
+SIGCHLD:
+When a child terminates, its parent receives a signal SIGCHLD from the kernel.
+By default, this signal is ignored. Processes can handle it via signal() or
+sigaction() calls. SIGCHLD may be generated at any time, as child demise is
+asynchronous with respect to the parent. A parent may also explicitly wait for
+the child to die, i.e. waiting.
+
+Waiting for Terminated Child Processes:
+
+
 
 
 

@@ -192,6 +192,39 @@ char *const args = {"git", "status", NULL};
 int ret = execv("/usr/bin/git", args);
 if(ret == -1) perror("execv");
 
+In Linux, only one member of the exec family is a system call, execve(). This
+is because variadic system calls would be difficult to implement and
+environment variable only have meaning in user space.
+
+Errors:
+On success, exec calls do not return. On error, they return -1 and set errono.
+E2BIG - too many bytes in the argument list or environment
+EACCESS - process lacks search perimissions for a component in path, the target
+          binary is not marked executable, the file system on which file is
+          resides is mounted noexec.
+EFAULT - invalid pointer
+EIO - low level IO error (bad)
+EISDIR - the binary or the interpreter is a directory
+ELOOP - system encountered too many symbolic links resolving path
+EMFILE - invoking process has reached its limit on open files
+ENFILE - system wide limit on open files has been reached
+ENOENT - target path or binary does not exist, or a shared library does not
+ENOEXEC - target binary is invalid or intended for a different architecture
+ENOMEM - kernel does not have enough memory for a new program
+ENOTDIR - non final component of path is not a directory
+EPERM - the filesystem on which path or file resides is mounted nosuid, the
+        user is not root and path or file has the suid or sgid bit set 
+ETXTBSY - the target path or file is open for writing by another process
+
+2) fork
+A new process running the same image as the current one can be created via the
+fork() system call.
+
+#include <sys/types.h>
+#include <unistd.h>
+
+pid_t fork();
+
 
 
 

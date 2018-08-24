@@ -225,13 +225,76 @@ fork() system call.
 
 pid_t fork();
 
+Successful invocation creates a new process, mostly identical to the parent.
+Both processes continue to run from fork() as if nothing special happened, note
+the parent gets the child PID while the child gets 0 returned.
 
+The parent and child are mostly identical, except in the following ways:
+-the child PID is newly allocated
+-the child's PPID is set to the parent's PID
+-resource statistics are zeroed for the child
+-pending signals are cleared and not inherited by the child
+-file locks are not inherited by the child
 
+On error, a child is not created and the call returns -1, setting errno.
+EAGAIN - kernel failed to allocate resources, e.g. PID or the RLIMIT_NPROC
+         resource limit was reached
+ENOMEM - insufficient kernel memory was available
 
+/*
+ * e.g. usage of fork()
+ */
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/types.h>
 
+pid_t pid = fork();
 
+if(pid > 0)
+    printf("parent: created child %d\n", pid);
+else if(pid == 0)
+    printf("child: running")
+else
+    perror("fork")
 
+Common usage of fork() is to create a child which in turn loads a new binary
+via exec(), e.g. a shell running a program for the user.
 
+/*
+ * e.g. spawn a child and run /bin/ls
+ */ 
+pid_t pid = fork();
+
+if(pid == -1)
+{
+    perror("fork")
+}
+else if(pid == 0)
+{
+    const char* args[] = {"ls", NULL};
+    int ret = execv("/bin/ls", args);
+    if(ret == -1)
+    {
+        perror("execv");
+        exit(1);
+    }
+}
+
+Copy on Write:
+In early Unix systems, forking was simple. The kernel would create copies of
+all internal data structures, duplicated the process' page table entries and
+performed a page-by-page copy of the parent's address space into the child's
+new address space. Unfortunately, this page-by-page copy is time-consuming.
+Modern Unix systems are smarter. Instead of wholesale copy of the parent's
+address space, Linux employs copy on write pages.
+
+Copy on write pages is a lazy optimization strategy desgined to mitigate the
+overhead of duplicating resources. If multiple consumers request read access to
+their own copies of a resource, duplicates do not need to be made, instead they
+each get a pointer to the resource and the illusion of exclusive access remains
+while they only read. If a consumer attempts to modify a resource, it is
+duplicated and the new copy is given to that consumer. Hence copy only occurs
+on write.
 
 
 

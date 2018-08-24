@@ -458,6 +458,118 @@ asynchronous with respect to the parent. A parent may also explicitly wait for
 the child to die, i.e. waiting.
 
 Waiting for Terminated Child Processes:
+Parents may want to obtain information about their child's termination, like
+exit status. If the child were to entirely disappear when terminated, no info
+would be left for the parent. Therefore children who die before their parent
+are put in a zomibe state, where some kernel data structures containing
+potentially usefule data are retained. A zombie waits for its parent to inquire
+about its status (aka. waiting). After the parent obtains the zombie's info
+the zombie formally exists and ceases to exist.
+
+#include <sys/types.h>
+#include <sys/wait.h>
+
+/*
+ * POSIX defines wait() for obtaining info on terminated children.
+ */
+pid_t wait(int *status);
+
+A call to wait() returns the pid of the terminated child, or -1 on error. If no
+child has terminated, it blocks, if a child has already terminated it returns
+immediately. Consequently, wait() upon SIGCHLD will not block.
+
+Errors:
+ECHILD - the calling process does not have children
+EINTR - a signal was received while waiting and the call returned early
+
+If not NULL, the status pointer contains information about the child. POSIX
+allows implementations to define the bits in status as they see fit, so there
+are a family of macros for interpreting the parameter.
+
+#include <sys/wait.h>
+
+int WIFEXITED(status);
+int WIFSIGNALLED(status)
+int WIFSTOPPED(status);
+int WIFCONTINUED(status);
+
+int WEXITSTATUS(status);
+int WTERMSIG(status);
+int WSTOPSIG(status);
+int WCOREDUMP(status);
+
+Either of the first two macros may return true (non-zero) depending on how the
+process terminated. The first stands for normal termination and (_exit()) and
+the macro WEXITSTAUS retrieves the low-order 8 bits passed to _exit().
+
+The second stands for signal caused termination, WTERMSIG returns the signal
+number which caused it and WCOREDUMP returns true if the child dumped core in
+reponse to the signal. (WCOREDUMP is not POSIX but exists on many Unices.)
+
+WIFSTOPPED and WIFCONTINUED return true if the process was stopped or
+continued, and is currently being replaced by the ptrace() system call. These
+conditions are generally only applicable when implementing a debugger or job
+control with waitpid(). If WIFSTOPPED is true, WIDSTOPSIG retrieves the signal
+which caused the stop.
+
+/*
+ * e.g. wait() on a child
+ */ 
+
+#include <unistd.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
+int main()
+{
+    int status;
+    pid_t pid;
+
+    if(!fork())
+        return 1;
+
+    pid = wait(&status);
+    if(pid == -1)
+        perror("wait")
+
+    printf("pid=%d\n", pid);
+
+    if(WIFEXITED(status))
+        printf("exit status: %d\n", WEXITSTATUS(status));
+
+    if(WIFSIGNAL(status))
+        printf("killed by signal: %d\n", WTERMSIG(status))
+
+    if(WIFSTOPPED(status))
+        printf("stopped by signal: %d\n", WSTOPMSG(status))
+
+    if(WIFCONTINUED(status))
+        printf("continued\n");
+
+    return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

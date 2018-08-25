@@ -40,11 +40,19 @@ int main()
         perror("chdir");
         return 1;
     }
-
-    // close open file descriptors
     
-    // open redirect stdin, stdout, stderr
+    // close open file descriptors, we know only 0, 1, 2 are open in the parent
+    for(int i=0; i<3; ++i)
+    {
+        // technically, we can ignore errors like invalid fd since we loop
+        close(i);
+    }    
+    
+    // since all fd's were closed, open starts at 0
+    // redirect stdin, stdout, stderr
     open("/dev/null", O_RDWR);
+
+    // duplicates fd 0 to 1 and 2
     dup(0);
     dup(0);
     

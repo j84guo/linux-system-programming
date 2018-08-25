@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 
 int redirect_outerr()
 {
@@ -17,8 +18,6 @@ int redirect_outerr()
     dup(1);
     return 0;
 }
-
-
 
 int main()
 {
@@ -47,4 +46,17 @@ int main()
             exit(1);
         }
     }
+
+    int status;
+
+    if(waitpid(pid, &status, 0) == -1)
+    {
+        perror("waitpid");
+        return 1;        
+    }
+
+    if(WIFEXITED(status))
+        printf("command finished with: %d\n", WEXITSTATUS(status));
+
+    return 0;
 }

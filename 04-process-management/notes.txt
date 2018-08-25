@@ -59,7 +59,7 @@ backing C type is architecture specific, on Linux it is typedef to int.
 4) Obtaining PID and PPID
 
 #include <sys/types.h>
-#include <sys/unistd.h>
+#include <unistd.h>
 
 // PID of invoking process
 pid_t getpid();
@@ -719,3 +719,340 @@ guaranteeing that no process is ever without an immediate parent. Init
 periodically waits on its children, ensuring none of the remain zombies.
 Although waiting is still considered good practice, short lived parents may
 safely exit knowing that their children will be re-parented by init.
+
+Users and Groups:
+Processes are associated with users and groups. The user and group id's are
+numeric values represented by the C types uid_t and gid_t, respectively.
+Mapping between numbers and names happens in userspace using the files
+/etc/passwd and /etc/group, but the kernel only deals with the numbers.
+
+User and group ids determine the operations a process may perform. Generally,
+the least privilleged rights required to do the process' work should be used.
+This requirement is dynamic, so a process may change its user/group id's, e.g.
+dropping root access after a one time operation.
+
+Real, Effective and Saved User/Group Ids:
+There are 3 uids associated with a process. (And 1 Linux-specific the file
+system uid)
+
+Real uid - User who originally ran the process. It is set to the real uid of
+           the process parent and does not change during an exec call. Normally
+           the login process sets the real uid of the user's login shell to
+           that user. Only the superuser can change this value.
+
+Effective uid - User that the process currently executes as. permission checks
+                are performed against this user id. Inherits the effective uid
+                of its parent, which is generally equal to the real uid.
+                Executing a setuid binary during an exec call causes the
+                process to set its effective uid to the binary's owner. For
+                instance, executing /usr/bin/passwd causes a process to gain
+                root effective uid, since root owns that setuid binary. The 
+                superuser may set this value to anythin, non-privilleged users
+                may set it to the real uid or the saved uid.
+
+Saved uid - Process' original effective uid. After a fork, the child inherits
+            the saved uid of its parent. Upon exec, the kernel sets the saved
+            uid to the original effective uid. Only the superuser may change
+            this value.
+
+The euid is what determines a process' access rights, ruid and suid are other
+options a non-privilleged user may set the euid to.
+
+Changing Real or Saved User/Group Ids:
+#include <sys/types.h>
+#include <unistd.h>
+
+/*
+ * sets the euid of the current process
+ *
+ * if the current euid is 0 (root) then the ruid and suid are also set to any
+ * specified value
+ *
+ * a non-root user may only provide the ruid or suid as argument
+ *
+ * returns 0 on success, -1 on error and sets errno
+ * EAGAIN - uid is different from the ruid and setting the ruid to uid will put
+ *          the user over RLIM_NPROC, the number of processes a user may own
+ * EPERM - non-root euid passed an argument that is neither the ruid or suid
+ */
+int setuid(uid_t uid);
+
+/*
+ * same as setuid() except for group ids
+ */
+int setgid(gid_t gid);
+
+Changing the Effective User Id:
+
+#include <sys/types.h>
+#include <unistd.h>
+
+/*
+ * sets only the euid, returns 0 on success, -1 on failure, setting errno to
+ * EPERM if a non-root user tries an invalid value
+ *
+ * in the non-root case, behaves the same as setuid(), the root may set euid to
+ * any value
+ *
+ * tip:
+ * non-root processes should use seteuid and root processes should use setuid
+ */
+int seteuid(uid_t uid);
+
+/*
+ * same as setuid(), except for group ids
+ */
+int setegid(git_t gid);
+
+Obtaining User and Group Ids:
+
+#include <sys/types.h>
+#include <unistd.h>
+
+/*
+ * real
+ */
+uid_t getuid();
+gid_t getgid();
+
+/*
+ * effective
+ */
+uid_t geteuid();
+gid_t getegid();
+
+These system calls cannot fail.
+
+Sessions and Process Groups:
+Each process is part of a process group, a collection of processes associated
+with each other for the purpose of job control. The primary attribute of a
+process group is that signals may be sent to all processes in the group, e.g.
+terminate, start, stop. 
+
+Each process group has a process groupd id (pgid) and a process group leader.
+The pgid is equal to the leader's pid. Process groups exist as long as the have
+one surviving member, i.e. the groups exists even if the leader dies. 
+
+When a user logs into a machine, the login process creates a new session that
+consists of a single process, the user's login shell, which acts as the session
+leader. The pid of the session leader is the session id. A session is a
+collection of process groups, they associate a user's activities with a
+controlling terminal, a specific tty device which handles the user's I/O.
+Consequently, sessions are largely the business of shells. 
+
+While process groups are a mechanism for signalling multiple processes at once,
+making job control possible, sessions exist to consolidate a user's processes
+around a controlling terminal. Process groups in a session are divided between
+a single foreground process group and >= 0 background process groups. When a
+user exits a terminal, SIGQUIT is sent to the foreground group, when a network
+disconnect is detected by the terminal, SIGHUP is sent to the foreground group,
+when a user enters the interrupt key (ctrl-C) SIGINT is sent to the foreground
+group.
+
+A command such as cat data.txt | grep key | sort results in 1 process group
+with 3 members. Since there is no trailing &, this is the foreground process
+group.
+
+Session System Calls:
+Shells create a new session on login via the setsid() system call.
+
+#include <unistd.h>
+
+/*
+ * Creates a new session and process group, setting the current process as the
+ * leader and sole member of both, the pid is used as the pgid and sid.
+ * 
+ * The process must not already be a process group leader (since the pgid and
+ * possible sid will already have been taken).
+ *
+ * On success, returns the sid, on error -1 and sets errno.
+ * EPERM - process is alread a process group leader
+ *
+ * One way to ensure that a given process is not a process group leader is to
+ * fork, then call setsid in the child.
+ */
+pid_t setsid();
+
+/*
+ * e.g. fork and setsid
+ */
+pid_t pid = fork();
+
+if(pid == -1)
+{
+    perror("fork");
+    return -1;
+}
+else if(pid != 0)
+{
+    exit(0);
+}
+
+if(setsid() == -1)
+{
+    perror("setsid");
+    return -1;
+}
+
+Daemons create their own session to detach from a controlling terminal. Shells
+create a new session for each login.
+
+/*
+ * obtains the session id of process with pid
+ *
+ * if pid is 0, the current proces is used, returns -1 on error
+ * ESRCH - invalid pid
+ */
+pid_t getsid(pid_t pid);
+
+/*
+ * e.g. get session id
+ */
+pid_t sid = getsid(0);
+
+if(sid == -1)
+{
+    perror("getsid"); // should not be posssible
+}
+else
+{
+    printf("session id=%d\n", sid);
+}
+
+Process Group System Calls:
+A call to setpgid() sets the pgid of the process with pid to pgid.
+
+#include <unistd.h>
+#include <sys/types.h>
+
+/*
+ * if pid is zero, the current process is used
+ * if pgid is zero, pid is used (e.g. set the pgid to the pid)
+ *
+ * returns 0 on success, which depends on several conditions
+ * -process identified by pid must be the calling process, or a child of the
+ *  calling process that has not issued an exec call and is in the same session
+ *  as the calling process
+ * -the process with pid must not be a session leader
+ * -if pgid already exists, it must be in the same session as the calling
+ *  process
+ * -pgid must be non-negative
+ *
+ * returns -1 on failure, setting errno
+ * EACCESS - the process with pid is a child of the calling process which has
+ *           already invoked exec
+ * EINVAL - pgid < 0
+ * EPERM - process with pid is a session leader or is in a different session
+ *         then the calling process, alternatively an attempt was made to move
+ *         a process into a process group in a different session
+ * ESRCH - pid is not the current process, 0 or a child of the current process
+ * ESRCH
+ */
+int setpgid(pid_t pid, pid_t pgid);
+
+/*
+ * obtaining the process group id
+ * if pid is zero, the current process' pgid is returned
+ *
+ * returns -1 on error and sets errno to ESRCH, indicating invalid pid
+ */
+pid_t getpgid(pid_t pid);
+
+Daemons:
+A daemon is process which runs in the background, unconnected to any
+uncontrolling terminal. Daemons are often started at boot time, are run as root
+or some other special user (e.g. jenkins) and handle system tasks. Often the
+name of a daemon ends in d, as in sshd or crond.
+
+Two general requirements of a daemon are that it is a child of init and is not
+connected to any controlling terminal.
+
+Steps to daemonize:
+1) Call fork(), the child (or grand-child if using the double fork trick) will
+   become the daemon.
+2) In the parent, exit(). This ensures the original parent is satisfied that
+   its child terminated, that the daemon's parent is no longer running and the
+   daemon is not a process group leader (pgid seems inherited through fork).
+3) In the child, call setsid(), giving the daemon a new process group and
+   session, both of which it leads. This also ensures the daemon is not linked
+   to any terminal (see double fork trick).
+4) Change the working directory to the root via chdir(). This prevents a daemon
+   (which can have an arbitrary working directory) from keeping a directory
+   open forever and preventing a sysadmin from unmounting the filesystem
+   containing that directory.
+5) Close all file descriptors, the daemon does not want to inherit file
+   file descriptors and, unaware, keep them open.
+6) Open file descriptors 0, 1, 2 (stdin, stdout, stderr) and redirect them to
+   /dev/null.
+
+/*
+ * e.g. daemon
+ */ 
+#include <unistd.h>
+#include <sys/types.h>
+
+#include <fcntl.h>
+#include <sys/stat.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+
+void daemonWork()
+{
+    printf("hello world\n");
+}
+
+int main()
+{
+    pid_t pid = fork();
+    
+    if(pid == -1)
+    {
+        perror("fork");
+        return -1;
+    }
+    else if(pid != 0)
+    {
+        printf("parent: %d exiting\n", getpid());
+        exit(0);
+    }
+
+    printf("child: %d started\n", getpid());
+
+    if(setsid() == -1)
+    {
+        perror("setsid");
+        return 1;
+    }
+
+    if(chdir("/") == -1)
+    {
+        perror("chdir");
+        return 1;
+    }
+
+    // close open file descriptors
+    
+    // open redirect stdin, stdout, stderr
+    open("/dev/null", O_RDWR);
+    dup(0);
+    dup(0);
+    
+    daemonWork();
+
+    return 0;
+}
+
+Most unix systems have a convenience function in their C library that automates
+these steps. 
+
+#include <unistd.h>
+
+/*
+ * non-zero values for nochdir or noclose cause the daemon not to change its
+ * working directory or close all open file descriptors, but 0, 0 is usually
+ * passed in
+ *
+ * returns 0 on success, -1 on failure
+ */
+int daemon(int nochdir, int noclose);

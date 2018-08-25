@@ -15,8 +15,7 @@ int main()
     */
     printf("read one line of up to %d bytes (counting '\\0' and including '\\n'): %s", LINE_MAX, buf);
   }
-
-  if(ferror(stdin))
+  else if(ferror(stdin))
   {
     perror("fgets");
     return 1;

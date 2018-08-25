@@ -41,7 +41,7 @@ int main()
   }
   else if(ferror(stdin))
   {
-    perror("fgetc");
+    perror("fgets");
     return 1;
   }
   else

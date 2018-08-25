@@ -489,7 +489,7 @@ are a family of macros for interpreting the parameter.
 #include <sys/wait.h>
 
 int WIFEXITED(status);
-int WIFSIGNALLED(status);
+int WIFSIGNALED(status);
 int WIFSTOPPED(status);
 int WIFCONTINUED(status);
 

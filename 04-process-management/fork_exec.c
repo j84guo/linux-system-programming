@@ -19,6 +19,29 @@ int redirect_outerr()
     return 0;
 }
 
+void wait_print(pid_t pid)
+{
+    int status;
+
+    if(waitpid(pid, &status, 0) == -1)
+    {
+        perror("waitpid");
+        return;       
+    }
+
+    if(WIFEXITED(status))
+        printf("command finished with: %d\n", WEXITSTATUS(status));
+
+    if(WIFSIGNALED(status))
+        printf("killed by signal: %d\n", WTERMSIG(status));
+
+    if(WIFSTOPPED(status))
+        printf("stopped by signal: %d\n", WSTOPSIG(status));
+
+    if(WIFCONTINUED(status))
+        printf("continued");
+}
+
 int main()
 {
     if(redirect_outerr() == -1)
@@ -47,16 +70,6 @@ int main()
         }
     }
 
-    int status;
-
-    if(waitpid(pid, &status, 0) == -1)
-    {
-        perror("waitpid");
-        return 1;        
-    }
-
-    if(WIFEXITED(status))
-        printf("command finished with: %d\n", WEXITSTATUS(status));
-
+    wait_print(pid);
     return 0;
 }

@@ -2,20 +2,24 @@
  * e.g. wait() on a child
  */ 
 
-#include <unistd.h>
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+#include <unistd.h> // fork
+#include <stdio.h> // printf, perror
+#include <stdlib.h> // abort
+#include <sys/types.h> // pid_
+#include <sys/wait.h> // wait, W* macros
 
 int main()
 {
     int status;
     pid_t pid;
 
-    if(!fork())
-        return 1;
+    if(fork() == 0)
+        // signal 6
+        // abort();
+        return 0;
 
     pid = wait(&status);
+
     if(pid == -1)
         perror("wait");
 

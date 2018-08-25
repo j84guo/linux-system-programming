@@ -489,7 +489,7 @@ are a family of macros for interpreting the parameter.
 #include <sys/wait.h>
 
 int WIFEXITED(status);
-int WIFSIGNALLED(status)
+int WIFSIGNALLED(status);
 int WIFSTOPPED(status);
 int WIFCONTINUED(status);
 
@@ -499,8 +499,8 @@ int WSTOPSIG(status);
 int WCOREDUMP(status);
 
 Either of the first two macros may return true (non-zero) depending on how the
-process terminated. The first stands for normal termination and (_exit()) and
-the macro WEXITSTAUS retrieves the low-order 8 bits passed to _exit().
+process terminated. The first stands for normal termination (_exit()) and the
+macro WEXITSTAUS retrieves the low-order 8 bits passed to _exit().
 
 The second stands for signal caused termination, WTERMSIG returns the signal
 number which caused it and WCOREDUMP returns true if the child dumped core in
@@ -509,7 +509,7 @@ reponse to the signal. (WCOREDUMP is not POSIX but exists on many Unices.)
 WIFSTOPPED and WIFCONTINUED return true if the process was stopped or
 continued, and is currently being replaced by the ptrace() system call. These
 conditions are generally only applicable when implementing a debugger or job
-control with waitpid(). If WIFSTOPPED is true, WIDSTOPSIG retrieves the signal
+control with waitpid(). If WIFSTOPPED is true, WSTOPSIG retrieves the signal
 which caused the stop.
 
 /*
@@ -518,6 +518,7 @@ which caused the stop.
 
 #include <unistd.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
@@ -526,23 +527,26 @@ int main()
     int status;
     pid_t pid;
 
-    if(!fork())
-        return 1;
+    if(fork() == 0)
+        // signal 6
+        // abort();
+        return 0;
 
     pid = wait(&status);
+
     if(pid == -1)
-        perror("wait")
+        perror("wait");
 
     printf("pid=%d\n", pid);
 
     if(WIFEXITED(status))
         printf("exit status: %d\n", WEXITSTATUS(status));
 
-    if(WIFSIGNAL(status))
-        printf("killed by signal: %d\n", WTERMSIG(status))
+    if(WIFSIGNALED(status))
+        printf("killed by signal: %d\n", WTERMSIG(status));
 
     if(WIFSTOPPED(status))
-        printf("stopped by signal: %d\n", WSTOPMSG(status))
+        printf("stopped by signal: %d\n", WSTOPSIG(status));
 
     if(WIFCONTINUED(status))
         printf("continued\n");
@@ -550,44 +554,168 @@ int main()
     return 0;
 }
 
+Waiting for a Specific Process:
+Often a process has multiple children and does not wish to wait for all of
+them, but rather a specific child. A clumsy approach is to repeatedly call wait
+and checkt the returned pid. We can use the system call waitpid() to wait on a
+particular child.
 
+#include <sys/types.h>
+#include <sys/wait.h>
 
+/*
+ * waitpid() is more powerful than wait(), taking additional options
+ *
+ * pid: specifies which process to wait for, its value can be < -1 (wait for
+ *      any child whose process group id is equal to the absolute value), -1
+ *      (wait for any child, like wait()), 0 (wait for children in the same
+ *      process group as the calling process) or > 0 (wait for any child
+ *      process whose pid is exactly the value provided)
+ *
+ * status: stores child info on return
+ *
+ * options: binary OR of zero or more options
+ * WNOHANG - no block
+ * WUNTRACED - WIFSTOPPED bit in returned status is set even if the calling
+ *             process is not tracing the child (shell job controll)
+ * WCONTINUED - WIFCONTINUED bit in returned status is set even if the calling
+ *              process is not tracing the child (shell)
+ *
+ * the following are equivalent:
+ * wait(&status);
+ * waitpid(-1, &status, 0);
+ */
+pid_t waitpid(pid_t pid, int *status, int options);
 
+/*
+ * e.g. wait with WNOHANG
+ */
 
+int status;
+pit_t pid = waitpid(1742, &status, WNOHANG);
 
+if(pid == -1)
+{
+    perror("waitpid");
+}
+else
+{
+    printf("pid=%d\n", pid);
 
+    if(WIFEXITED(status))
+        printf("exit: %d\n", WEXITSTATUS(status));
 
+    if(WIFSIGNALLED(status))
+        printf("killed by signal: %d\n", WTERMSIGNAL(status));
+}
 
+Launching and Waiting for a New Process:
+Both ANSI C and POSIX define an interface coupling spawning a process and
+waiting for its termination, think of it as synchronous process creation. This
+system call is useful when a subprocess is made and immediately waited upon.
 
+#define _XOPEN_SOURCE /* if we want WEXITSTATUS, etc. */
+#include <stdlib.h>
 
+/*
+ * The call is named system because synchronous process creation is also called
+ * shelling out to the system. It is common to use system() to run a simple
+ * utility or shell script often with the goal of retrieving its return value.
+ * 
+ * A call to system() invokes the command string, which includes the executable
+ * and any arguments. The string is appended to /bin/sh -c, i.e. passed to the
+ * shell wholesale.
+ */
+int system (const char *command);
 
+On success, the return value is the status as returned by wait(), meaning the
+process exit code can be retrieved using WEXITSTATUS. On error, calls return
+-1. Note that if /bin/sh itself failed, the return value of WEXITSTATUS is the
+same as exit(127), but since programs may also return that, there is no sure
+way to tell if /bin/sh failed or not.
 
+If command is NULL, system() returns a non-zero value if /bin/sh is available
+and 0 otherwise.
 
+During execution, SIGCHLD is blocked, SIGINT and SIGQUIT are ignored. Ignoring
+SIGINT and SIGQUIT has several implication, particularly if system() is invoked
+in a loop, in which case you should check the child exit status.
 
+/*
+ * e.g. system() in a loop
+ */    
+do
+{
+    int ret = system("git status");
+        
+    if(WIFSIGNALLED(ret) && (WTERMSIG(ret) == SIGINT) || (WTERMSIG(ret) == SIGQUIT))
+        break; // handle
+} while(1);
 
+Implementing system() using fork() and exec*() is a useful exercise.
 
+#include <unistd.h>
+#include <sys/types.h>
+#include <stdio.h>
+#include <stdlib.h>
 
+/*
+ * synchronously spawns and waits for the command /bin/sh -c <cmd>
+ * returns -1 for any error, otherwise the exit code of the command
+ * does not ignore signals
+ */
+int my_system(const char *cmd)
+{
+    int status;
 
+    pid_t pid = fork();
+    
+    if(pid == -1)
+    {
+        return -1;
+    }
+    else if(pid == 0)
+    {
+        const char *argv[4];
+        argv[0] = "sh";
+        argv[1] = "-c";
+        argv[2] = cmd;
+        argv[3] = NULL;
 
+        execv("/bin/sh", argv);
+        
+        // if execv returns, it is -1 and indicates an error
+        exit(-1);
+    }
 
+    if(waitpid(pid, &status, 0) == -1)
+        return -1;
+    else if(WIFEXITED(status))
+        return WEXITSTATUS(status);
+    
+    // -1 is returned if the process is stopped by a signal
+    return -1;
+}
 
+int main()
+{
+    printf("%d\n", my_system("git status"));    
+}
 
+Zombie:
+A process which has terminated but has not yet been waited upon by its parent
+is called a zombie. Zombies continue to consume some system resources (kernel
+data structures) allowing their parent to lookup their exit information. Once
+that occurs, the kernel removes the processes for good.
 
+Sometimes zombie processes stick around, due to irresponsible parents. If your
+application forks a child process, it is its responsibility to wait on the
+child, even if it merely discards the information gleaned. Otherwise, children
+live on, hogging PID's and some kernel memory.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+If a zombie's parent dies before its child or waiting on its child, the kernel
+walks the parent's children and reparent's then to the init process,
+guaranteeing that no process is ever without an immediate parent. Init
+periodically waits on its children, ensuring none of the remain zombies.
+Although waiting is still considered good practice, short lived parents may
+safely exit knowing that their children will be re-parented by init.

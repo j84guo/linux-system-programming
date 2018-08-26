@@ -14,15 +14,11 @@
 int ezsh_cd(char **argv)
 {
     if(argv[1] == NULL)
-    {
         fprintf(stderr, "ezsh_cd: expected path\n");
-    }
     else
     {
         if(chdir(argv[1]) == -1)
-        {
             perror("chdir");
-        }
     }
 
     return 1;
@@ -219,7 +215,7 @@ void ezsh_loop()
 
     do
     {
-        printf("> ");
+        printf("ezsh> ");
 
         line = ezsh_read_line();
         // printf("%s\n", line);

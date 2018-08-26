@@ -138,11 +138,13 @@ void handle_client(struct client_sock *client)
 
     if(line == NULL)
         return;
- 
-    if(send_file(line, client) == -1)
-        return;
+
+    int ret = send_file(line, client);    
     
-    printf("done handling client");
+    if(ret == -1)
+        fprintf(stderr, "handle_client: failed to send file");
+
+    free(line);
 }
 
 char *read_line(struct client_sock *client)
@@ -220,7 +222,7 @@ int send_file(char *path, struct client_sock *client)
         }
     }
 
-    return 0;
+    return 1;
 }
 
 int create_sock(struct server_sock *server)

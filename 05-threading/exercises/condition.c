@@ -19,6 +19,9 @@ int count = 0;
 #define COUNT_HALT1 3
 #define COUNT_HALT2 6
 
+/*
+ * todo: cleaner way to have both threads signal each other
+ */
 int main()
 {
     pthread_t t1, t2;
@@ -41,20 +44,16 @@ void *funcCount1(void *p)
         pthread_mutex_lock(&cond1_mutex);
 
         while(count >= COUNT_HALT1 && count <= COUNT_HALT2)
-        {
             pthread_cond_wait(&cond1, &cond1_mutex);
-        }
- 
-        count++;
+
         printf("funcCount1: %d\n", count);
+        ++count;
 
         if(count >= COUNT_DONE)
             done = 1;
 
-        if(count >= COUNT_HALT1 &&  count <= COUNT_HALT2)
-        {
+        if(count >= COUNT_HALT1 && count <= COUNT_HALT2)
             pthread_cond_signal(&cond2);
-        }
 
         pthread_mutex_unlock(&cond1_mutex);
 
@@ -66,9 +65,6 @@ void *funcCount1(void *p)
     } 
 }
 
-/*
- * todo: fix this buggy code
- */
 void *funcCount2(void *p)
 {
     int done = 0;
@@ -78,29 +74,23 @@ void *funcCount2(void *p)
         pthread_mutex_lock(&cond1_mutex);
 
         while(count < COUNT_HALT1 || (count > COUNT_HALT2 && count < COUNT_DONE))
-        {
             pthread_cond_wait(&cond2, &cond1_mutex);
-        }
 
         if(count == COUNT_DONE)
             return NULL;
 
-        count++;                                                            
         printf("func2: %d\n", count);
+        ++count;
 
         if(count >= COUNT_DONE)
             done = 1;
 
         if(count < COUNT_HALT1 || count > COUNT_HALT2)
-        {
             pthread_cond_signal(&cond1);
-        }
 
         pthread_mutex_unlock(&cond1_mutex);
 
         if(done)
-        {
             return NULL;
-        }
     }
 }

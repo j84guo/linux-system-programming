@@ -9,6 +9,13 @@ void thr_exit()
 {
     pthread_mutex_lock(&m);
 
+    /*
+     * pthread_cond_signal unblocks at least 1 sleeping thread
+     *
+     * in the event that more than one threads wakes up (spurious), application
+     * code should check the condition once more (while loop) to ensure that is
+     * true before proceeding and sleep otherwise
+     */
     done = 1;
     pthread_cond_signal(&c);
 

@@ -3,7 +3,7 @@
 #include <pthread.h>
 
 #define BUFCAP 20
-#define REFILLS 3
+#define FILLS 3
 
 int buf[BUFCAP];
 int n = 0;
@@ -49,44 +49,50 @@ int main()
     return 0;
 }
 
+/*
+ * wait for empty then produce one item at a time and signal when full  
+ */
 void *produce(void *p)
 {
     int i=0, done=0;
-    // sleep(3);
 
     while(1)
-    { 
+    {
         pthread_mutex_lock(&mutex);
-        insert_one();
-        
-        if(n == BUFCAP)
+
+        while(n == BUFCAP)
         {
-            signal_and_wait();
-            if(++i == REFILLS)
+            pthread_cond_wait(&empty_cond, &mutex);
+
+            if(++i == FILLS)
                 done = 1;
+        }        
+
+        if(!done)
+        {
+            insert_one();
+
+            if(n == BUFCAP)
+                pthread_cond_signal(&full_cond);
         }
 
         pthread_mutex_unlock(&mutex);
-        if(done == 1)
+
+        if(done)
             return NULL;
     }
 }
 
 void insert_one()
 {
-    printf("adding at: %d\n", n);        
+    printf("adding at: %d\n", n);
     buf[n] = n;
     ++n;
 }
 
-void signal_and_wait()
-{
-    pthread_cond_signal(&full_cond);
-
-    while(n > 0)
-        pthread_cond_wait(&empty_cond, &mutex);
-}
-
+/*
+ * wait for full then consume all items and signal empty
+ */
 void *consume(void *p)
 {
     while(1)
@@ -99,7 +105,7 @@ void *consume(void *p)
         remove_all();
 
         pthread_cond_signal(&empty_cond);
-        pthread_mutex_unlock(&mutex);            
+        pthread_mutex_unlock(&mutex);
     }
 }
 

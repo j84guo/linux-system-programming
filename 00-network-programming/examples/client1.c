@@ -1,3 +1,8 @@
+/**
+ * TCP client which looks up a hostname using getaddrinfo and receives a block
+ * of data from the first server it can connect to.
+ */
+
 #include <stdio.h>
 #include <string.h>
 

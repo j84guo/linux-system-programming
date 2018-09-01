@@ -70,9 +70,7 @@ int request(struct addrinfo *ptr)
 
     if(connect(sd, ptr->ai_addr, ptr->ai_addrlen) == -1)
     {
-        if(close(sd) == -1)
-            perror("close");
-
+        try_close(sd);
         perror("connect");
         return -1;
     }
@@ -93,7 +91,9 @@ int request(struct addrinfo *ptr)
     }
 
     buf[ret] = '\0';
-    printf("%s", buf); 
+    printf("%s", buf);
+    
+    try_close(sd); 
     return 0;
 }
 
@@ -114,4 +114,10 @@ void *get_address(struct addrinfo *ptr)
     {
         return &((struct sockaddr_in6 *) ptr->ai_addr)->sin6_addr;
     }
+}
+
+void try_close(int sd)
+{
+    if(close(sd) == -1)
+        perror("close");
 }

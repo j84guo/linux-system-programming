@@ -34,7 +34,6 @@ int main(int argc, char **argv)
         return 1;
     }
 
-
     struct addrinfo *ptr;
     for(ptr = res; ptr != NULL; ptr = ptr->ai_next)
     {
@@ -93,6 +92,7 @@ int request(struct addrinfo *ptr)
         return -1;
     }
 
+    buf[ret] = '\0';
     printf("%s", buf); 
     return 0;
 }

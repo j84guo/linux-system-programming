@@ -106,22 +106,21 @@ void print_addrinfo(struct addrinfo *ptr)
     }
 
     /**
-     * Sometimes inet_ntop may fail, but since the socket structures are 
-     * generated from getaddrinfo, we may assume that it doesn't in this case.
+     * #include <arpa/inet.h>
+     *
+     * const char *inet_ntop(int af,
+     *                       const void *src,
+     *                       char *dst,
+     *                       socklent_t size);
+     *
+     * Converts the contents of a struct in_addr ar struct in6_addr to string.
+     * Returns a pointer to the string on success, NULL on fail.
+     *
+     * Sometimes inet_ntop may fail, but since the arguments are generated from
+     * getaddrinfo, we may assume that it doesn't in this case.
      */
     char ip[INET6_ADDRSTRLEN];
     inet_ntop(ptr->ai_family, addr, ip, sizeof ip);
 
     printf("%s: %s\n", version, ip);    
 }
-
-
-
-
-
-
-
-
-
-
-

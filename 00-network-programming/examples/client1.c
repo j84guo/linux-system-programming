@@ -14,6 +14,7 @@ void init_hints(struct addrinfo *hints);
 int request(struct addrinfo *ptr);
 void print_server(struct addrinfo *ptr);
 void *get_address(struct addrinfo *ptr);
+void try_close(int sd);
 
 int main(int argc, char **argv)
 {

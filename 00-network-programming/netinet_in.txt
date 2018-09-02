@@ -29,6 +29,9 @@ struct sockaddr_in
   sa_family_t sin_family; // uint defined in <sys/socket.h> (address family)
   in_port_t sin_port; // uint16_t (port)
   struct in_addr sin_addr; // has uint32_t s_addr field (ip address)
+
+  // many implementations also define a padding so that the struct is 16 bytes
+  char sin_zero[8];
 };
 
 /*

@@ -2,6 +2,8 @@
  * IPv4 TCP client which reads and writes with a host specified by address and
  * port. The snippets here are re-usable and intended to simplify working with
  * the Unix socket API.
+ *
+ * Todo: recv all available data (probably using select() or poll())
  */
 
 #include <stdio.h>

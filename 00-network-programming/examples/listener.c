@@ -10,6 +10,7 @@
 #include <netdb.h>
 
 #define RECVSIZE 2048
+#define BUFINIT 8
 
 /** IP agnostic server socket */
 struct ServerSock
@@ -27,9 +28,6 @@ struct ServerSock
 /** initialize socket and address */
 int udp_serv(struct ServerSock *serv, char *port);
 
-/** extract positive integer from string */
-int parse_port(char *str);
-
 /** addrinfo constraints */
 void udp_serv_hints(struct addrinfo *hints);
 
@@ -41,6 +39,21 @@ int init_with_first(struct ServerSock *serv, struct addrinfo *res);
 
 /** print address info structure */
 void print_addrinfo(struct addrinfo *ptr);
+
+/** receive messages indefinitely */
+void serve_forever(struct ServerSock *serv);
+
+/** handle one message */
+void handle_message(struct ServerSock *serv);
+
+/** read stdin for a message and send it back to the peer */
+void reply_message(struct ServerSock *serv, struct sockaddr_storage *peer);
+
+/** read one line from stdin */
+char *input_reply();
+
+/** prints contents of a sockaddr_storage based on address family */
+void print_sockaddr(struct sockaddr_storage *peer);
 
 int main(int argc, char **argv)
 {
@@ -57,24 +70,109 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    serve_forever(&serv);
+}
+
+void serve_forever(struct ServerSock *serv)
+{
     while(1)
     {
-        struct sockaddr_storage peer;
-        socklen_t len = sizeof peer;
+        handle_message(serv);
+    }
+}
 
-        char buf[RECVSIZE + 1];
-        int ret = recvfrom(serv.sd, buf, sizeof buf, 0, (struct sockaddr *) &peer, &len);
-        if(ret == -1)
+void handle_message(struct ServerSock *serv)
+{
+    struct sockaddr_storage peer;
+    socklen_t len = sizeof peer;
+
+    char buf[RECVSIZE + 1];
+    int ret = recvfrom(serv->sd, buf, sizeof buf, 0, (struct sockaddr *) &peer, &len);
+
+    if(ret == -1)
+    {
+        perror("recvfrom");
+        return;
+    }
+    else
+        buf[ret] = '\0';
+
+    printf("received: %s", buf);
+    print_sockaddr(&peer);
+
+    reply_message(serv, &peer);
+}
+
+void reply_message(struct ServerSock *serv, struct sockaddr_storage *peer)
+{
+    char *buf = input_reply();
+    socklen_t len = peer->ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
+
+    if(sendto(serv->sd, buf, strlen(buf), 0, (struct sockaddr *) peer, len) == -1)
+    {
+        perror("sendto");
+    }
+
+    free(buf);
+}
+
+char *input_reply()
+{
+    printf("reply: ");
+
+    int c, n = 0, cap = BUFINIT;
+    char *buf = (char *) malloc(sizeof(char) * cap);
+
+    while((c = fgetc(stdin)) != EOF)
+    {
+        if(n == cap)
         {
-            perror("recvfrom");
-            continue;
+            cap *= 2;
+            buf = (char *) realloc(buf, sizeof(char) * cap);
         }
 
-        buf[ret] = '\0';
-        printf("received: %s", buf);
-
-        print_sockadd(&peer);
+        buf[n++] = (char) c;
+        
+        if(c == '\n')
+            break;
     }
+
+    if(ferror(stdin))
+    {
+        perror("fgetc");
+        exit(1);
+    }
+    else if(feof(stdin))
+        exit(0);
+
+    buf[n] = '\0';
+    return buf;
+}
+
+void print_sockaddr(struct sockaddr_storage *peer)
+{
+    if(peer == NULL)
+        return;
+
+    void *addr;
+    unsigned short port;
+
+    if(peer->ss_family == AF_INET)
+    {
+        struct sockaddr_in *ipv4 = (struct sockaddr_in *) peer;
+        addr = &ipv4->sin_addr;
+        port = ntohs(ipv4->sin_port);
+    }
+    else
+    {
+        struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *) peer;
+        addr = &ipv6->sin6_addr;
+        port = ntohs(ipv6->sin6_port);
+    }
+
+    char buf[INET6_ADDRSTRLEN];
+    inet_ntop(peer->ss_family, addr, buf, sizeof buf);
+    printf("peer [%s:%hu]\n", buf, port);
 }
 
 int udp_serv(struct ServerSock *serv, char *port)
@@ -137,7 +235,7 @@ int init_with_first(struct ServerSock *serv, struct addrinfo *res)
         serv->family = res->ai_family;
         memcpy(&serv->addr, &res->ai_addr, res->ai_addrlen);        
 
-        printf("success\n");
+        printf("init_with_first: success\n");
         return 1;
     }
 
@@ -176,10 +274,3 @@ void print_addrinfo(struct addrinfo *ptr)
 
     printf("%s:%hu\n", buf, port);
 }
-
-/*
-void print_sockaddr()
-{
-
-}
-*/

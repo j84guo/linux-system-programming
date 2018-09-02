@@ -89,6 +89,10 @@ void traverse_addrinfo(struct addrinfo *ptr)
     }
 }
 
+/**
+ * This functino can easily be modified to return the first IPv4 or IPv6
+ * address it encounters for use in a DNS lookup function.
+ */
 void print_addrinfo(struct addrinfo *ptr)
 {
     char *version;

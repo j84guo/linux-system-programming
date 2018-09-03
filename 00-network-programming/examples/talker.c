@@ -9,6 +9,8 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
+#define RECVSIZE 2048
+
 /** IP version agnostic socket client */
 struct ClientSock
 {
@@ -47,12 +49,33 @@ int main(int argc, char **argv)
     }
     print_udp_client(&client);
 
-    char buf[] = "hello world from a udp client\n";
-    int ret = sendto(client->sd, buf, sizeof buf, 0,
-        (struct sockaddr *) client->addr, sizeof(struct sockaddr_storage));
+    char sendto_buf[] = "hello world from a udp client\n";
+
+    int ret = sendto(client.sd, sendto_buf, sizeof sendto_buf, 0,
+                     (struct sockaddr *) &client.addr,
+                     sizeof(struct sockaddr_storage));
 
     if(ret == -1)
+    {
         perror("sendto");
+        return 1;
+    }
+
+    struct sockaddr_storage peer;
+    socklen_t len = sizeof(struct sockaddr_storage);
+    char recvfrom_buf[RECVSIZE + 1];
+
+    ret = recvfrom(client.sd, recvfrom_buf, RECVSIZE, 0,
+                   (struct sockaddr *) &peer,
+                   &len);
+    if(ret == -1)
+    {
+        perror("recvfrom");
+        return 1;
+    }
+
+    recvfrom_buf[ret] = '\0';
+    printf("%s", recvfrom_buf);
 }
 
 int init_udp_client(struct ClientSock *client, char *host, char *port)

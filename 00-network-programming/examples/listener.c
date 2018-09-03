@@ -76,9 +76,7 @@ int main(int argc, char **argv)
 void serve_forever(struct ServerSock *serv)
 {
     while(1)
-    {
         handle_message(serv);
-    }
 }
 
 void handle_message(struct ServerSock *serv)
@@ -109,9 +107,7 @@ void reply_message(struct ServerSock *serv, struct sockaddr_storage *peer)
     socklen_t len = peer->ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
 
     if(sendto(serv->sd, buf, strlen(buf), 0, (struct sockaddr *) peer, len) == -1)
-    {
         perror("sendto");
-    }
 
     free(buf);
 }
@@ -121,18 +117,18 @@ char *input_reply()
     printf("reply: ");
 
     int c, n = 0, cap = BUFINIT;
-    char *buf = (char *) malloc(sizeof(char) * cap);
+    char *buf = malloc(sizeof(char) * cap);
 
     while((c = fgetc(stdin)) != EOF)
     {
         if(n == cap)
         {
             cap *= 2;
-            buf = (char *) realloc(buf, sizeof(char) * cap);
+            buf = realloc(buf, sizeof(char) * cap);
         }
 
         buf[n++] = (char) c;
-        
+
         if(c == '\n')
             break;
     }
@@ -224,7 +220,7 @@ int init_with_first(struct ServerSock *serv, struct addrinfo *res)
             continue;
         }
         serv->sd = sd;
-        
+
         if(bind(serv->sd, res->ai_addr, res->ai_addrlen) == -1)
         {
             perror("bind");
@@ -233,7 +229,7 @@ int init_with_first(struct ServerSock *serv, struct addrinfo *res)
         }
 
         serv->family = res->ai_family;
-        memcpy(&serv->addr, &res->ai_addr, res->ai_addrlen);        
+        memcpy(&serv->addr, &res->ai_addr, res->ai_addrlen);
 
         printf("init_with_first: success\n");
         return 1;
@@ -252,7 +248,7 @@ void print_addrinfo(struct addrinfo *ptr)
 {
     if(ptr == NULL)
         return;
-    
+
     void *addr;
     unsigned short port;
 

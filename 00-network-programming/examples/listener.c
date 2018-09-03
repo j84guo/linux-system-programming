@@ -1,3 +1,8 @@
+/**
+ * UDP server which receives incoming packets and replies with a string read
+ * from stdin.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,9 +25,6 @@ struct ServerSock
 
     /** socket address */
     struct sockaddr_storage addr;
-
-    /** address family */
-    int family;
 };
 
 /** initialize socket and address */
@@ -70,6 +72,8 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // printf("%d\n", serv.addr.ss_family);
+    print_sockaddr(&serv.addr);
     serve_forever(&serv);
 }
 
@@ -167,8 +171,12 @@ void print_sockaddr(struct sockaddr_storage *peer)
     }
 
     char buf[INET6_ADDRSTRLEN];
-    inet_ntop(peer->ss_family, addr, buf, sizeof buf);
-    printf("peer [%s:%hu]\n", buf, port);
+    const char *ret = inet_ntop(peer->ss_family, addr, buf, sizeof buf);
+
+    if(ret == NULL)
+        perror("inet_ntop");
+    else
+        printf("print_sockaddr: [%s:%hu]\n", buf, port);
 }
 
 int udp_serv(struct ServerSock *serv, char *port)
@@ -228,8 +236,7 @@ int init_with_first(struct ServerSock *serv, struct addrinfo *res)
             continue;
         }
 
-        serv->family = res->ai_family;
-        memcpy(&serv->addr, &res->ai_addr, res->ai_addrlen);
+        memcpy(&serv->addr, res->ai_addr, res->ai_addrlen);
 
         printf("init_with_first: success\n");
         return 1;
@@ -268,5 +275,5 @@ void print_addrinfo(struct addrinfo *ptr)
     char buf[INET6_ADDRSTRLEN];
     inet_ntop(ptr->ai_family, addr, buf, sizeof buf);
 
-    printf("%s:%hu\n", buf, port);
+    printf("print_addrinfo: [%s:%hu]\n", buf, port);
 }

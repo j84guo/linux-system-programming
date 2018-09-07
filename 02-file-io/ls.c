@@ -42,6 +42,8 @@ int main(int argc, char **argv) {
     DIR *dir;
     struct dirent *ent;
     struct stat ent_stat;
+
+    // the buffer should probably be expanded if the path doesn't fit
     char path[1024];
 
     if((dir = opendir(argv[1])) == NULL) {

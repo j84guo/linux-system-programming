@@ -4,6 +4,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <stdlib.h>
 
 struct Mode {
     mode_t bit;
@@ -42,16 +43,22 @@ int main(int argc, char **argv) {
     DIR *dir;
     struct dirent *ent;
     struct stat ent_stat;
-
-    // the buffer should probably be expanded if the path doesn't fit
-    char path[1024];
+    int cap = 4;
+    char *path = malloc(sizeof(char) * cap);
 
     if((dir = opendir(argv[1])) == NULL) {
         perror("opendir");
+        return 1;
     }
 
     while((ent = readdir(dir)) != NULL) {
         char *name = ent->d_name;
+        int len = strlen(argv[1]) + strlen(name) + 1;
+
+        while(len >= cap) {
+            cap *= 2;
+            path = realloc(path, sizeof(char) * cap);
+        }
 
         strcpy(path, argv[1]);
         strcat(path, "/");
@@ -62,8 +69,10 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        printf("%s ", name);
-        printf( (S_ISDIR(ent_stat.st_mode)) ? "d" : "-");
+        printf("%s ", path);
+        printf(S_ISDIR(ent_stat.st_mode) ? "d" : "-");
         print_mode(ent_stat.st_mode);
     }
+
+    free(path);
 }

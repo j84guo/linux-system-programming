@@ -80,9 +80,9 @@ print("sock: ", sock)
 write_queue = collections.deque()
 write_queue_mutex = threading.Lock()
 
-rlist = [sock, read_ind]
-wlist = []
-elist = []
+rlist = None
+wlist = None
+elist = None
 
 def loop_forever():
     while True:

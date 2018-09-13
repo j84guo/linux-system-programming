@@ -41,15 +41,16 @@ int main(int argc, char **argv) {
     }
 
     DIR *dir;
-    struct dirent *ent;
-    struct stat ent_stat;
-    int cap = 4;
-    char *path = malloc(sizeof(char) * cap);
 
     if((dir = opendir(argv[1])) == NULL) {
         perror("opendir");
         return 1;
     }
+
+    struct dirent *ent;
+    struct stat ent_stat;
+    int cap = 4;
+    char *path = malloc(sizeof(char) * cap);
 
     while((ent = readdir(dir)) != NULL) {
         char *name = ent->d_name;

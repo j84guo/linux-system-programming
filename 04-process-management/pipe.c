@@ -55,10 +55,12 @@ int main(int argc, char **argv)
 
     printf("forked child %d\n", pid);
     char buf[] = "hello child process, here's some data through the pipe";
-    size_t n = strlen(buf);
+    size_t cap = strlen(buf);
+    int n = 0;
     
-    int m = 0;
-    while(n > 0 && (m = write(pd[1], buf, n)) < n) {
+    while(n < cap) {
+        int m = write(pd[1], buf + n, cap - n);
+
         if(m == -1) {
             if(errno == EINTR)
                 continue;
@@ -68,11 +70,9 @@ int main(int argc, char **argv)
         }
 
         printf("wrote %d bytes\n", m);
-        n -= m;
+        n += m;
     }
-    
-    printf("done writing\n");
-    
+        
     if(close(pd[0]) == -1 || close(pd[1]) == -1) {
         perror("close");
         return 1;

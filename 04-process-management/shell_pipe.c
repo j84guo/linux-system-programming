@@ -7,6 +7,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+struct Descriptors
+{
+    int pd;
+    int sd;
+    int bd;
+};
+
 void dup2_try(int oldfd, int newfd)
 {
     if(dup2(oldfd, newfd) == -1) {
@@ -38,6 +45,19 @@ void wait_try()
     }
 }
 
+void cmd_try(const char * file, char * const argv[], struct Descriptors des)
+{
+    dup2_try(des.pd, des.sd);
+    fork_exec(file, argv);
+    wait_try();
+    dup2_try(des.bd, des.sd);
+
+    if(close(des.pd) == -1) {
+        perror("close");
+        exit(1);
+    }
+}
+
 int main()
 {
     int in_d, out_d;
@@ -51,23 +71,16 @@ int main()
         perror("pipe");
         return 1;
     }
-
+ 
     const char *file = "ls";
     char * const argv1[] = {"ls", "-la", NULL};
-    dup2_try(pd[1], 1);
-    fork_exec(file, argv1);
-    wait_try();
-    dup2_try(out_d, 1);
+    struct Descriptors des = {pd[1], 1, out_d};
+    cmd_try(file, argv1, des);
 
-    if(close(pd[1]) == -1) {
-        perror("close");
-        return 1;
-    }
-
-    file = "ls";
-    char * const argv2[] = {"cat", "cat", NULL};
-    dup2_try(pd[0], 0);
-    fork_exec(file, argv1);
-    wait_try();
-    dup2_try(in_d, 0);
+    file = "cat";
+    char * const argv2[] = {"cat", NULL};
+    des.pd = pd[0];
+    des.sd = 0;
+    des.bd = in_d;
+    cmd_try(file, argv2, des);
 }

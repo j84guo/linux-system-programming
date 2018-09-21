@@ -2,7 +2,7 @@
 #include <stdio.h>
 
 int main()
-{ 
+{
     /*
     * array of constant strings
     */
@@ -10,4 +10,3 @@ int main()
     int ret = execv("/usr/local/bin/dep", args);
     if(ret == -1) perror("git");
 }
-

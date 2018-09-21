@@ -7,11 +7,18 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+/**
+ * First close stdout and stderr, then open stdout as a file and duplicate it
+ * for stderr
+ */
 int redirect_outerr()
 {
     close(1);
     close(2);
 
+    /**
+     * Create, truncating if already existing
+     */
     if(open("out.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644) == -1)
         return -1;
 
@@ -23,8 +30,7 @@ void wait_print(pid_t pid)
 {
     int status;
 
-    if(waitpid(pid, &status, 0) == -1)
-    {
+    if(waitpid(pid, &status, 0) == -1) {
         perror("waitpid");
         return;       
     }
@@ -44,8 +50,7 @@ void wait_print(pid_t pid)
 
 int main()
 {
-    if(redirect_outerr() == -1)
-    {
+    if(redirect_outerr() == -1) {
         perror("redirect_outerr");
         return 1;
     }
@@ -54,17 +59,14 @@ int main()
      * e.g. spawn a child and run /bin/ls
      */                   
     pid_t pid = fork();
-    
-    if(pid == -1)
-    {
+
+    if(pid == -1) {
         perror("fork");
     }
-    else if(pid == 0)
-    {
+    else if(pid == 0) {
         char *const args[] = {"ls", NULL};
         int ret = execv("/bin/ls", args);
-        if(ret == -1)
-        {
+        if(ret == -1) {
             perror("execv");
             exit(1);
         }

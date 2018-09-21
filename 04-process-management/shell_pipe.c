@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include <sys/types.h>
 
 #include <stdio.h>
@@ -28,6 +29,15 @@ void fork_exec(const char *file, char *const argv[])
     }
 }
 
+void wait_try()
+{
+    int status;
+    if(wait(&status) == -1) {
+        perror("wait");
+        exit(1);
+    }
+}
+
 int main()
 {
     int in_d, out_d;
@@ -46,6 +56,7 @@ int main()
     char * const argv1[] = {"ls", "-la", NULL};
     dup2_try(pd[1], 1);
     fork_exec(file, argv1);
+    wait_try();
     dup2_try(out_d, 1);
 
     if(close(pd[1]) == -1) {
@@ -57,5 +68,6 @@ int main()
     char * const argv2[] = {"cat", "cat", NULL};
     dup2_try(pd[0], 0);
     fork_exec(file, argv1);
+    wait_try();
     dup2_try(in_d, 0);
 }

@@ -62,7 +62,6 @@ void merge(double *A, size_t start, size_t end)
     free(tmp);
 }
 
-
 void* merge_sort(void *p)
 {
     struct ArrDouble arg = * (struct ArrDouble *) p;
@@ -71,7 +70,19 @@ void* merge_sort(void *p)
         return NULL;
 
     double start=arg.start, end=arg.end;
-    size_t mid = (start + end) / 2;
+
+    /**
+     * Since start + end could overflow our numeric type, we want to do the
+     * equivalent start/2 + end/2. However this fails when both numbers are odd.
+     * Although start + end would be even, we rounded start/2 and end/2 down, so
+     * each operand loses 0.5 and our sum is 1 less than it should be.
+     *
+     * The solution is to do start + (end - start) / 2. Only if the sum of the
+     * number sis odd do we want to roudn down by 1. Well it turns out that an
+     * odd sum implies an odd difference, so we know we've roudned down the
+     * right number of times.
+     */
+    size_t mid = start + (end-start) / 2;
 
     struct ArrDouble arg1=arg, arg2=arg;
     pthread_t t1, t2;

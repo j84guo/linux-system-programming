@@ -1,4 +1,7 @@
+#include <time.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <pthread.h>
 
 #define MAX 20
@@ -25,7 +28,12 @@ int get()
 
 pthread_cond_t fill = PTHREAD_COND_INITIALIZER;
 pthread_cond_t empty = PTHREAD_COND_INITIALIZER;
-pthread_mutex_t mutex;
+
+/**
+ * apparently statically allocated mutexes don't have to be initialized
+ * https://docs.oracle.com/cd/E26502_01/html/E29043/mutex-5.html
+ */
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  * produce one and signal, waiting for a removal when full
@@ -36,6 +44,10 @@ void *producer(void *p)
 
     for(int i=0; i<n; ++i)
     {
+        /**
+         * callers tend not to check the return value, since well-formed code
+         * should not generate locking errors at runtime
+         */ 
         pthread_mutex_lock(&mutex);
 
         while(count == MAX)
@@ -46,6 +58,8 @@ void *producer(void *p)
 
         pthread_cond_signal(&fill);
         pthread_mutex_unlock(&mutex);
+
+        sleep(rand() % 3);
     }
 
     return NULL;
@@ -78,6 +92,8 @@ void *consumer(void *p)
 int loops = 10;
 int main()
 {
+    srand(time(NULL));
+
     pthread_t p, c;
     pthread_create(&p, NULL, producer, &loops);
     pthread_create(&c, NULL, consumer, &loops);

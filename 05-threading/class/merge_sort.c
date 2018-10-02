@@ -42,7 +42,7 @@ void merge(double *A, size_t start, size_t end)
     size_t a_index=start, b_index=mid+1, a_end=mid, b_end=end;
 
     while(a_index <= a_end && b_index <= b_end) {
-        if(A[a_index] < A[b_index]) {
+        if(A[a_index] < A[b_index])
             tmp[i] = A[a_index++];
         else
             tmp[i] = A[b_index++];
@@ -85,17 +85,16 @@ void* merge_sort(void *p)
     size_t mid = start + (end-start) / 2;
 
     struct ArrDouble arg1=arg, arg2=arg;
-    pthread_t t1, t2;
+    pthread_t t1;
 
     arg1.end = mid;
     pthread_create(&t1, NULL, merge_sort, &arg1);
 
     arg2.start = mid +1;
     arg2.end = end;
-    pthread_create(&t2, NULL, merge_sort, &arg2);
+    merge_sort(&arg2);
 
     pthread_join(t1, NULL);
-    pthread_join(t2, NULL);
     merge(arg.A, start, end);
 }
 

@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <pthread.h>
 
-#define MAX 20
+#define MAX 10
 
 int buffer[MAX];
 int fill_ptr = 0;
@@ -89,7 +89,7 @@ void *consumer(void *p)
     return NULL;
 }
 
-int loops = 10;
+int loops = 20;
 int main()
 {
     srand(time(NULL));

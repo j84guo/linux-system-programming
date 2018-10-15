@@ -36,6 +36,8 @@ int single_list_init(struct single_list *list)
     list->tail = NULL;
     list->size = 0;
     sem_init(&list->sem, 0, 1);
+
+    return 1;
 }
 
 /**
@@ -68,18 +70,21 @@ int push_front(struct single_list *list, void *obj)
  */
 int single_list_free(struct single_list *list)
 {
-    struct single_node *node = list->head;
+    struct single_node *node;
     struct single_node *next;
 
     if(list == NULL)
         return 0;
 
-    while(node != NULL)
-    {
+    node = list->head;
+
+    while(node != NULL) {
         next = node->next;
         free(node);
         node = next;
     }
+
+    sem_destroy(&list->sem);
 
     return 1;
 }
@@ -108,12 +113,12 @@ int main()
     pthread_create(&t1, NULL, push_thread, &list);
     pthread_create(&t2, NULL, push_thread, &list);
 
+    printf("waiting on children\n");
     pthread_join(t2, NULL);
     pthread_join(t1, NULL);
     node = list.head;
 
-    while(node != NULL)
-    {
+    while(node != NULL) {
         printf("%d\n", *((int *) node->element));
         node = node->next;
     }

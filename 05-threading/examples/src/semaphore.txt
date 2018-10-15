@@ -1,0 +1,18 @@
+int count
+mutex_t count_mut
+cond_t inc_cond
+
+// sem_wait
+lock(count_mut)
+--count
+while count == -1:
+    wait(inc_cond, count_mut)
+unlock(count_mut)
+
+// critical section
+
+// sem_post
+lock(count_mut)
+++count
+signal(inc_cond)
+unlock(count_mut)

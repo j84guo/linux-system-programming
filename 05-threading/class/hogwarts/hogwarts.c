@@ -149,6 +149,10 @@ void *run_dobby(void *arg)
  * number of tasks left. If zero, the worker posts dobby and waits on full_list
  * (blocking all the other works as it waits). The worker takes a task, updates
  * global variables, unlocks the mutex and works.
+ *
+ * Alternatively, we use -1 to indicate that Dobby is in the process of sending
+ * new work, subsequent workers will see -1 and start another iteration,
+ * blocking on the semaphore.
  */
 void *run_house_elf(void *ignore)
 {
@@ -164,6 +168,7 @@ void *run_house_elf(void *ignore)
         task *todo = take_task();
         --active_tasks;
         if (active_tasks == 0) {
+            active_tasks = -1;
             printf("Waking Dobby\n");
             sem_post(&empty_list);
         }

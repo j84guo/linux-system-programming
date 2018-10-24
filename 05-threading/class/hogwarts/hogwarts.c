@@ -142,6 +142,14 @@ void *run_dobby(void *arg)
     }
 }
 
+/**
+ * Seems like there's a bug here, Dobby may be signalled more than once, if
+ * multiple workers realize that active tasks has gone down to zero.
+ * The solution is to have the workers block inside the mutex as they check the
+ * number of tasks left. If zero, the worker posts dobby and waits on full_list
+ * (blocking all the other works as it waits). The worker takes a task, updates
+ * global variables, unlocks the mutex and works.
+ */
 void *run_house_elf(void *ignore)
 {
     int b = 0;

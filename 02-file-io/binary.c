@@ -8,10 +8,14 @@ struct Person {
     char name[100];
 };
 
+/*
+ * todo:
+ * handle partial write/read
+ * garbage data is read into the struct when converting it to a char array
+ */
 int main()
 {
     struct Person p1 = {21, "this is p1"};
-    char *wbuf = (char *) &p1;
 
     int fd = open("person.dat", O_RDWR | O_CREAT | O_TRUNC, 0664);
     if (fd == -1) {
@@ -19,36 +23,29 @@ int main()
         return 1;
     }
 
-    int n = 0, size = sizeof p1, k;
-    while (n < size) {
-        k = write(fd, &wbuf + n, size - n);
-
-        if (k == -1) {
-            if (errno == EINTR)
-                continue;
-
-            perror("write");
-            return 1;
-        }
-
-        n += k;
+    int size = sizeof(struct Person);
+    if (write(fd, &p1, size) == -1) {
+        perror("write");
+        return 1;
     }
 
-    struct Person p2;
-    lseek(fd, 0, SEEK_SET);
-    
     /*
-     * todo: handle partial read
-     * bug: garbage data is read into the struct
+     * don't check return since code is well-formed
+     * we have a valid file descriptor, offset and no overflow occurs
      */
-    if ((k = read(fd, &p2, size)) == -1) {
+    lseek(fd, 0, SEEK_SET);
+    struct Person p2 = {10, "test"};
+    
+    if (read(fd, &p2, size) == -1) {
         perror("read");
         return 1;
     }
 
-    close(fd);
-    printf("%d\n", k);
-    printf("%d\n", p2.age);
+    if (close(fd) == -1) {
+        perror("close");
+        return 1;
+    }
 
+    printf("%d, %s\n", p2.age, p2.name);
     return 0;
 }

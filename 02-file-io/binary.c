@@ -10,8 +10,9 @@ struct Person {
 
 /*
  * todo:
- * handle partial write/read
- * garbage data is read into the struct when converting it to a char array
+ * 1. handle partial write/read
+ * 2. garbage data is read into the struct when converting it to a char array
+ *    possibly due to struct padding
  */
 int main()
 {

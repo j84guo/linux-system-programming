@@ -26,7 +26,7 @@ typedef struct {
 
 int tcpcon_config(tcpcon_t *conn, tcpinfo_t *info)
 {
-    if (conn == NULL || info == NULL)
+    if (!conn || !info)
         return -1;
 
     if (!inet_pton(AF_INET, info->ip, &conn->addr.sin_addr)) {
@@ -48,7 +48,7 @@ int tcpcon_config(tcpcon_t *conn, tcpinfo_t *info)
 
 int tcpcon_destroy(tcpcon_t *conn)
 {
-    if (conn == NULL)
+    if (!conn)
         return -1;
 
     return close(conn->fd);
@@ -130,9 +130,8 @@ void tcpinfo_init(tcpinfo_t *info, int argc, char **argv)
 
 /**
  * Todo:
- * - queue
- * - indicator
- * - select vs poll
+ * - indicator socket
+ * - select vs poll usage
  * - chat protocol
  */
 int main(int argc, char **argv)
@@ -158,7 +157,7 @@ int main(int argc, char **argv)
 
     char input[512];
     while (1) {
-        if (fgets(input, 512, stdin) == NULL) {
+        if (!fgets(input, 512, stdin)) {
             if (ferror(stdin)) {
                 perror("fgets");
                 stop_thread(eloop);

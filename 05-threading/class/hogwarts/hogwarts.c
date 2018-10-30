@@ -143,16 +143,18 @@ void *run_dobby(void *arg)
 }
 
 /**
- * Seems like there's a bug here, Dobby may be signalled more than once, if
- * multiple workers realize that active tasks has gone down to zero.
- * The solution is to have the workers block inside the mutex as they check the
- * number of tasks left. If zero, the worker posts dobby and waits on full_list
- * (blocking all the other works as it waits). The worker takes a task, updates
- * global variables, unlocks the mutex and works.
+ * Note that it looks like multiple workers may see active_tasks == 0 and try
+ * to signal Dobby. This doesn't actually happen though, since (1) Dobby only
+ * increments the semaphore active_tasks number of times and (2) a worker with
+ * access to the shared variables is in the critical section where the next
+ * task is taken and the variables updated. So a worker who sees 0 is the last
+ * worker in the current batch, all others area working on their task and will
+ * loop back to the semaphore.
  *
- * Alternatively, we use -1 to indicate that Dobby is in the process of sending
- * new work, subsequent workers will see -1 and start another iteration,
- * blocking on the semaphore.
+ * Another solution has the workers block inside the mutex as they check the
+ * number of tasks left. If zero, the worker posts dobby and waits on full_list
+ * (blocking all the other workers as it waits). The worker takes a task,
+ * updates global variables, unlocks the mutex and works.
  */
 void *run_house_elf(void *ignore)
 {
@@ -168,7 +170,6 @@ void *run_house_elf(void *ignore)
         task *todo = take_task();
         --active_tasks;
         if (active_tasks == 0) {
-            active_tasks = -1;
             printf("Waking Dobby\n");
             sem_post(&empty_list);
         }

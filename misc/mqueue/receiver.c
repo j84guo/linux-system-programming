@@ -1,9 +1,9 @@
 #include <stdbool.h>
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <mqueue.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <signal.h>
 
@@ -24,8 +24,6 @@ int main(int argc, char **argv)
 {
     mqd_t qdes;
     char *qname;
-    mode_t mode = S_IRUSR | S_IWUSR;
-    struct mq_attr attr;
 
     if (argc != 2) {
         printf("Usage: %s <qname>\n", argv[0]);
@@ -34,12 +32,7 @@ int main(int argc, char **argv)
     }
 
     qname = argv[1];
-    
-    attr.mq_maxmsg = QUEUE_SIZE;
-    attr.mq_msgsize = sizeof(struct point);
-    attr.mq_flags = 0;
-
-    qdes = mq_open(qname, O_RDONLY, mode, &attr);
+    qdes = mq_open(qname, O_RDONLY);
     if (qdes == -1) {
         perror("mq_open");
         exit(1);

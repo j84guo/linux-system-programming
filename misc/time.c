@@ -16,6 +16,6 @@ int main()
     gettimeofday(&tv, NULL);
     t2 = tv.tv_sec + tv.tv_usec/1000000.0;
     
-    printf("%lf seconds elapsed\n",  t2 - t1);
+    printf("%.6f seconds elapsed\n",  t2 - t1);
     return 0;
 }

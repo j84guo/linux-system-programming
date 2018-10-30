@@ -157,13 +157,14 @@ void *run_dobby(void *arg)
  * updates global variables, unlocks the mutex and works.
  */
 void *run_house_elf(void *ignore)
-{
-    int b = 0;
-    pthread_cleanup_push(house_elf_cleanup, &b);
-
+{ 
     while (1) {
         sem_wait(&full_list);
 
+        // register mutex unlock handler and lock mutex
+        // since lock is not a cancellation point, there is no risk of cancel
+        // happening after push and before lock (assuming deferred type)
+        pthread_cleanup_push(house_elf_cleanup, NULL);
         pthread_mutex_lock(&mutex);
 
         b = 1;
@@ -174,23 +175,18 @@ void *run_house_elf(void *ignore)
             sem_post(&empty_list);
         }
 
+        // pop handler and unlock mutex, could also pass 1 to do it on 1 line
         pthread_mutex_unlock(&mutex);
-        b = 0;
+        pthread_cleanup_pop(0);
 
         do_work(todo);
     }
-
-    pthread_cleanup_pop(0);
 }
 
 void house_elf_cleanup(void *arg)
 {
-    int b = *((int*)arg);
-
-    if (b) {
-        printf("unlocking mutex\n");
-        pthread_mutex_unlock(&mutex);
-    }
+    printf("unlocking mutex\n");
+    pthread_mutex_unlock(&mutex);
 }
 
 // generate random string code based off original by Ates Goral

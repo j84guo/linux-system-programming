@@ -1,0 +1,395 @@
+Common Mechanisms of Interprocess Communication (IPC)
+=====================================================
+Motivation
+----------
+Modern multiprocess operating systems are designed so that processes are
+as independent as possible, which gives one process a minimal chance to 
+corrupt the another one. Processes commonly run at independent address spaces,
+so that they cannot communicate each to other in any way when the operating
+system does not provide some method for interprocess communication.
+To overcome this and allow information to be exchanged between independent
+processes, the interprocess mechanisms has been developed.
+
+These machanisms are the integral parts of the operating system, so
+in most cases, the data exchanged by communicating processes pass
+through the kernel (the exception is the shared memory).
+
+The interprocess communication is not necesserily bound to distributed
+systems. In fact, from the point of view of modular software design, it
+may be useful to separate two cooperating, but functionally different,
+pieces of software to two independent processes, letting them to communicate
+only by some well-specified manner. Doing this may bring lot of advantages:  
+
+ * the programmer is forced to exactly define interfaces of the components
+ *    involved. Doing this, we can later easily substitute one component
+ *       by the new version, while the other(s) are still untouched.
+ *
+ *        * the system is more robust. If one of the component fails (due to error
+ *           or someone's bad intention), the other(s) are not influenced, because the
+ *              operating system does not permit to corrupt one process by another. Due to
+ *                 well-defined interface, it is also much more simpler to guard all of the
+ *                    other module's requests (validity of parameter values, access rights, etc.)
+ *                     
+ *                      * all modules can be developed and debugged separately, which 
+ *                         simplifies the development process considerably 
+ *
+ *                          * by generalizing the IPC mechanism to use some network communication
+ *                             channel, the system can become distributed, allowing to utilize
+ *                                other computer's computing power. Except the substitution of the IPC
+ *                                   mechanism, the previously designed modules needn't to be changed at all
+ *                                      (in the ideal case) 
+ *
+ *                                      This following sections introduces IPC mechanisms found in most UNIX-like 
+ *                                      (and other) systems:
+ *
+ *                                            Pipes
+ *                                                FIFOs (Named Pipes)
+ *                                                    Message Queues
+ *                                                        Shared Memory
+ *                                                            Sockets
+ *
+ *                                                            Integration of IPC mechanisms with the file system
+ *                                                            --------------------------------------------------
+ *
+ *                                                            In UNIX, pipes, FIFOs and sockets are integrated with the file system, 
+ *                                                            so after opening of the resource there is not a difference of 
+ *                                                            reading/writing to a regular file, pipe, FIFO or socket (i.e., the same kernel 
+ *                                                            functions are used).
+ *                                                            (Note: in fact, there are mechanism which the application may use to
+ *                                                            distinguish the stream type it is dealing with and to set the specific
+ *                                                            options available only for the specific stream type, if needed).
+ *
+ *                                                            Pipes
+ *                                                            -----
+ *                                                             A pipe allows for data flow in one direction; when bidirectional communication
+ *                                                              is needed, two pipes need to be created.
+ *
+ *                                                               Only related processes (those in the same branch of the process tree) can
+ *                                                                communicate through a pipe.
+ *
+ *                                                                 The pipe is created by system call pipe():
+ *
+ *                                                                  int pipe(int filedes[2]);
+ *                                                                    - creates  a  pair  of file descriptors, pointing to a
+ *                                                                        pipe inode, and places them in the  array  pointed  to  by
+ *                                                                            filedes.   filedes[0]  is  for  reading, filedes[1] is for
+ *                                                                                writing.
+ *
+ *                                                                                 Note: When forking processes, the child process inherits descriptors of all 
+ *                                                                                        files opened (or inherited) by it's parent. 
+ *                                                                                               (if not explicitly specified otherwise).
+ *
+ *                                                                                                Note: Description of stdin and stdout redirection mechanism  
+ *                                                                                                       (i.e., how the shell connects two unrelated processes by pipe)
+ *
+ *                                                                                                        Note: if the process tries to write to the pipe and the reader
+ *                                                                                                               has already closed it's end of the pipe, the writer will receive
+ *                                                                                                                      SIGPIPE signal. 
+ *
+ *                                                                                                                       Note: pipe (and FIFO) can be put to nonblocking mode, so that functions
+ *                                                                                                                              like read() do not wait until data are available, but returns an error 
+ *                                                                                                                                     code if data are not available yet.
+ *
+ *                                                                                                                                     Note: Name spaces
+ *                                                                                                                                     -----------------
+ *                                                                                                                                     - FIFOs, shared memory segments and semaphores are identified by key
+ *                                                                                                                                       (key_t type = integer)
+ *                                                                                                                                       - there exist a mechanism which allows to map the path to an existing
+ *                                                                                                                                         file to a value of a key; that way, two processes can generate the
+ *                                                                                                                                           the same key value from a given file
+ *
+ *                                                                                                                                           The function used to map pathname (and "project #" to a key:
+ *                                                                                                                                            key_t ftok ( char *pathname, char proj );
+ *
+ *                                                                                                                                              Common technical implementation of key value evaluation:
+ *                                                                                                                                                 - combines i-node of the file, minor dev # of the volume the file 
+ *                                                                                                                                                      is stored on + the additional 8-bit number (proj)
+ *
+ *                                                                                                                                                       Note: the file mustn't be deleted and created again between calls to ftok(),
+ *                                                                                                                                                              since it would be given a different inode number
+ *                                                                                                                                                               Note: the computation neglects major device #, so there is a small chance
+ *                                                                                                                                                                      to generate the same key for different pathnames.
+ *
+ *
+ *                                                                                                                                                                      Named pipes (FIFOs)
+ *                                                                                                                                                                      -------------------
+ *                                                                                                                                                                      Similar to pipes, but allows for communication between unrelated processes.
+ *                                                                                                                                                                      This is done by naming the communication channel and making it permanent.
+ *
+ *                                                                                                                                                                      Like pipe, FIFO is the unidirectional data stream.
+ *
+ *                                                                                                                                                                      FIFO creation:
+ *
+ *                                                                                                                                                                      int mkfifo ( const char *pathname, mode_t mode );
+ *                                                                                                                                                                       - makes a FIFO special file with name pathname. 
+ *                                                                                                                                                                          (mode specifies the FIFO's permissions, as common in UNIX-like 
+ *                                                                                                                                                                              file systems).  
+ *                                                                                                                                                                               - A FIFO special file is similar to a pipe, except that it is created in 
+ *                                                                                                                                                                                  a different way. Instead of being an anonymous communications channel,
+ *                                                                                                                                                                                     a FIFO special file is entered into the file system by calling mkfifo()
+ *
+ *                                                                                                                                                                                     Once a FIFO special file has been created, any process can open it
+ *                                                                                                                                                                                     for reading or writing, in the same way as an ordinary file.
+ *
+ *                                                                                                                                                                                     Note: Opening a FIFO for reading normally blocks until some other process
+ *                                                                                                                                                                                           opens the same FIFO for writing, and vice versa.
+ *
+ */* Chovani: mnoho writeru-jeden reader: podle ocekavani
+   mnoho writeru, vice readeru: cte jen prvni, ostatni cekaji. */
+
+
+Shared Memory
+-------------
+Fastest IPC mechanism, due to avoiding (multiple) traps to kernel mode
+(example: file_reader | file_writer - 4 traps per block)
+
+Disadvantage: explicit synchronization is needed (most commonly by semaphores)
+
+Creating the shared memory segment (or getting a reference to it):
+
+ shmid = shmget(key, size, flags);
+ - returns the identifier (int) of the shared memory segment associated
+      to the value of the key. If no shared memory is associated with the key 
+   and the IPC_CREAT flag is set, the shared memory is allocated
+
+- when creating the shared memory segment, flags specify the rights granted to
+    owner, group and others (as obvious in UNIX).
+
+- For each shared memory segment, the system maintains an information structure
+    containing among other:
+   * segment size (commonly rounded up to virtual memory page size)
+   *    * time of last attach and detach
+   *       * pid, uid, gid of creator
+   *          * pid of last operator,
+   *             * # of processes currently attached 
+   *                * permissions 
+   *
+   *                After a shared memory id is obtained, the memory segment must be "attached"
+   *                to a proces's address space. Then it can be accessed like the other portions
+   *                of process data memory (for example via pointers in C).
+   *                When the process does not intend to access the shared memory segment any more,
+   *                it should detach it.
+   *
+   *                Notes:
+   *                 - After a fork() the child inherits the attached shared memory segments.
+   *                  - After an exec() all attached shared memory segments are detached
+   *                     (not destroyed).
+   *                      - Upon exit() all attached shared memory segments are detached (not destroyed).
+   *
+   *                      Attaching and detaching segments to the address space
+   *                      .....................................................
+   *
+   *                       char *shmat ( int shmid, char *shmaddr, int shmflg );
+   *                        - attaches  the  shared memory segment identified by shmid to the data 
+   *                           segment of the calling process
+   *
+   *                             If shmaddr is 0 (most common), the system tries to find an unmapped region.
+   *
+   *                               If SHM_RDONLY  is  asserted  in  shmflg,  the  segment  is
+   *                                      attached for reading and the process must have read access
+   *                                             permissions to the  segment.   Otherwise  the  segment  is
+   *                                                    attached for read and write and the process must have read
+   *                                                           and write access permissions to the segment.
+   *
+   *
+   *                                                             Note: the same segment may be attached more than once in the process's
+   *                                                                address space.
+   *
+   *                                                                If the attach is successful, the system updates the fields of shared segment
+   *                                                                information structure: last_attach_time, PID of last operator, #_of_attached 
+   *
+   *                                                                 int shmdt ( char *shmaddr);
+   *                                                                  - detaches the (previously attached) shared memory segment from the calling 
+   *                                                                     process's data segment
+   *
+   *                                                                      If the detach is successful, the system updates the shared segment
+   *                                                                       information structure: last_dettach_time, PID of last operator,
+   *                                                                        #_of_attached
+   *
+   *                                                                        Destroying the segment, control functions
+   *                                                                        .........................................
+   *
+   *                                                                        int shmctl(int shmid, int cmd, struct shmid_ds *buf);
+   *
+   *                                                                         - ioctl()-like function; it allows the user to enquire information on 
+   *                                                                            a shared memory segment, set the owner, group, permissions, 
+   *                                                                               or destroy a segment.
+   *
+   *                                                                               Destroying the segment: by the appropriate command of shmctl(). The segment 
+   *                                                                               is marked to be destroyed. It is actually destroyed after the last detach. 
+   *                                                                               The segment can only be destroyed by it's owner, creator or superuser. 
+   *                                                                               (Note: The superuser may also lock the segment in memory, so that it is never 
+   *                                                                               swapped out).
+   *
+   *
+   *                                                                               Message Queues
+   *                                                                               --------------
+   *                                                                               Variety of implementations:
+   *
+   *                                                                                - Windows and X Windows model (messages also generated by system)
+   *                                                                                 - Some systems maintain one system-wide message queue (Windows),
+   *                                                                                    the others establish a specific queue for every process
+   *                                                                                     - Unix System V: All messages may be intermixed in one queue; 
+   *                                                                                              there may exist a lot of such (uniquely identifiable) queues
+   *
+   *                                                                                              System V Message Queues:        
+   *                                                                                                
+   *                                                                                                Differs from pipes in that the caller need not (but can) read the messages
+   *                                                                                                in FIFO manner; it can select the message it wants to acquire instead.
+   *
+   *                                                                                                the message has the predetermined structure:
+   *
+   *                                                                                                struct msgbuf {
+   *                                                                                                    long mtype;     /* message type, must be > 0 */
+    char mtext[1];  /* message data  - variable length*/
+};
+
+The system also stores lenghts of each message internally. 
+
+Every message is identified by a type and can contain data of a variable
+length (the upper bound is implementation dependent). The system does not
+interpret message data in any way.
+The message identifiers (msgbuf.mtype) can, but need not to be unique. 
+They are commonly interpreted as message priorities or identifications 
+of the process who sent the message. The receiving process can select 
+which message it wants to extract next; it can be the one sent first, or some 
+of a specific priority etc (see msgrcv() ). 
+The system maintains the descriptive structure (struct msqid_ds) for every
+message queue. It can be accessed via msgctl() function (see bellow). Among
+other things, the structure contains:
+ - creator uid and gid
+    - # of messages in the queue and # of bytes used to store them
+       - max. # of bytes for the queue
+          - times of last msgsnd() and msgrcv() and PIDs of processes who called them  
+
+Since there may exist many queues, functions for sending and receiving 
+messages need to identify the queue of interest. The queue is identified by 
+msgid, the (positive) number returned from msgget() function:
+
+    int msgget ( key_t key, int msgflags );
+
+The purpose of msgget() is analogous to open() for regular files. In addition,
+it can be also used to create a new message queue, if the appropriate flag
+is set.
+
+As for pipes and FIFOs, the creator of the message queue can define rights
+for other processes. The access rights system is analogous to that used in
+file system.
+
+
+To put a message to the queue, use function
+
+ int msgsnd (int msqid, struct msgbuf *msgp, int size, int msgflags);
+ - the calling process must have the write permission for the queue
+    - The system enqueues the copy of the passed message
+       - if the message queue is full, the function will block until enough
+            place will be available to put the message (unless IPC_NOWAIT flag is
+   specified)
+
+ int msgrcv (int msqid, struct msgbuf *msgp, int maxsize,
+         long msgtype, int msgflags );
+  - reads a message from the message queue msqid into the msgbuf 
+        removing it from the queue
+  - the calling process must have read access permission
+
+  The argument msgtyp specifies  the  type  of  message
+  requested as follows:
+
+   * msgtype=0 : read the message on the queue's front
+   *    * msgtype>0 : read the first message on the queue of type msgtyp
+   *             (msg.mtype=msgtype).
+   *                  Note: if MSG_EXCEPT flag is set, reads the first message in the queue
+   *                       of type NOT equal to msgtype
+   *                          * msgtype<0 : reads the first message on the queue with the lowest type
+   *                                 less than or equal to the absolute value of msgtype.
+   *                                         (useful to establist message priorities)
+   *
+   *                                         Similar to files, there also exists ioctl()-like function to
+   *                                         get/set special parameters related to a message queue: 
+   *
+   *                                          int msgctl ( int msqid, int  command, struct msqid_ds *buf );
+   *
+   *                                          Using msgctl() we can
+   *                                           * remove the queue
+   *                                            * get/set queue parameters (access rights, owner uid & gid, number
+   *                                               of bytes reserved for the queue, etc).
+   *
+   *                                               Usage Examples: message bus (one server and many clients).
+   *
+   *                                               Comparison of message queues and pipes:
+   *                                                - ONE message queue may be used to pass data in both directions
+   *                                                 - the message needn't to be read on first in-first out basis
+   *                                                    but can be processed selectively instead
+   *
+   *                                                    Signals
+   *                                                    -------
+   *                                                     - system and user signals
+   *                                                      - signalling to a group of processes
+   *                                                       - masking signals
+   *                                                        - signal(), kill(), alarm()
+   *
+   *                                                        Sockets
+   *                                                        -------
+   *
+   *                                                        Problem of Sharing (local) resources
+   *                                                        ====================================
+   *
+   *                                                        Locking
+   *                                                        -------
+   *                                                          - file locking, record locking
+   *                                                            - advisory locking (cooperating processes) vs. mandatory locking
+   *
+   *                                                            Semaphores
+   *                                                            ----------
+   *                                                            Semaphores are used to regulate access to a resources which can be used
+   *                                                            only N times simultaneously. Every semaphore maintains the value (semval)
+   *                                                            indicating how many times the resource may be still used without waiting
+   *                                                            until some process which received the access permission will give up.
+   *
+   *                                                            System V: Concept of "semaphore sets"
+   *                                                             - there can be specified a set of operations for different semaphores, 
+   *                                                                which must be executed atomically or not at all.
+   *
+   *                                                                Creating/openning semaphore set:
+   *
+   *                                                                 semid = semget ( key_t key, int nsems, int semflg );
+   *                                                                  - returns the semaphore set identifier associated to the value
+   *                                                                     of the argument key. A new set of nsems semaphores is created if
+   *                                                                        no existing message queue is associated to key, and IPC_CREAT 
+   *                                                                           is asserted in semflg
+   *                                                                            - lower 9 bits  of  the  argument  semflg define  the  access permissions
+   *                                                                             - the system call initializes the system semaphore set data structure semid_ds
+   *
+   *                                                                              int semop (int semid, struct sembuf *sops, unsigned nsops);
+   *                                                                                - performs operations on  selected  members  of the  semaphore  set
+   *                                                                                    indicated by semid. Each of the nsops elements in the array pointed 
+   *                                                                                        to by sops specify an operation  to  be  performed  on a semaphore 
+   *                                                                                            by a struct sembuf:
+   *
+   *                                                                                                 short sem_num;  /* semaphore number: 0 = first */
+        short sem_op;   /* semaphore operation */
+        short sem_flg;  /* operation flags: IPC_NOWAIT */
+
+ The system call semantic assures that the operations will be performed if and  
+ only if all of them will succeed.
+
+ sem_op:
+   >0:  the operation adds this value to semval. Used when a process stops 
+   >    using the shared resource 
+   >
+   >      ==0:  (the read permission for semaphore set is needed)
+   >        If semval is zero, the operation goes through, otherwise the function
+   >            waits until semval reaches zero (or the semaphore is removed 
+   >                or the process receives a signal)
+   >
+   >                   <0:  (write permission for the semaphore set is needed)
+   >                    The caller wants to wait until semval is greater or equal abs(semop).
+   >                        Used to wait until a resource will be available.
+   >
+   >
+   >                        int semctl(int semid, int semnun, int cmd, union semun arg);
+   >                           - ioctl()-like function for semaphores
+   >                              - cmd: get status, get descriptions, remove, 
+   >                                  get/set values of individual semaphores
+   >
+   >

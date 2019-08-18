@@ -7,9 +7,11 @@ in_addr_t // uint32_t (32 bit ipv4 address)
 sa_family_t // uint included from <sys/socket.h>
 
 INADDR_ANY // macro for ipv4 wildcard
+INADDR_LOOPBACK // ipv4 loopback
 INET_ADDRSTRLEN // macro for ipv4 string length (16)
 
 const struct in6_addr in6addr_any // external variable for ipv6 wildcard
+IN6ADDR_LOOPBACK_INIT // ipv6 loopback
 INET6_ADDRSTRLEN // macro for ipv6 string length (46)
 
 /*
